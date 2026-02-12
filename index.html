@@ -3271,7 +3271,10 @@
           </div>`;
       }).join('');
 
-      chatMessages.scrollTop = chatMessages.scrollHeight;
+      // Scroll to bottom after DOM renders
+      requestAnimationFrame(() => {
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+      });
 
       // Render any charts that were inserted
       setTimeout(() => renderPendingCharts(), 50);
