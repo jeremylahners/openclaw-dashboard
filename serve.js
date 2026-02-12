@@ -6,7 +6,7 @@ const net = require('net');
 
 const config = require('./config.js');
 
-const PORT = 3000;
+const PORT = 3001;
 const BACKEND_PORT = 8081;
 const GATEWAY_PORT = config.gatewayPort || 18789;
 const PUBLIC_DIR = __dirname;

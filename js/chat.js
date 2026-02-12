@@ -81,7 +81,27 @@ export function gwRequest(method, params = {}) {
   });
 }
 
+// Polling interval for chat updates (ms)
+let pollInterval = null;
+const POLL_INTERVAL_MS = 2000;
+
 export function gwConnect() {
+  // DISABLED: Gateway WebSocket requires device pairing which isn't implemented for web UI
+  // Using HTTP polling instead via the backend API
+  console.log('[GW] WebSocket disabled - using HTTP polling');
+  gwConnected = true; // Fake connected state for UI
+  
+  const wsEl = document.getElementById('wsStatus');
+  if (wsEl) { 
+    wsEl.textContent = 'Polling'; 
+    wsEl.style.color = '#22c55e'; 
+  }
+  
+  // Start polling for updates
+  startPolling();
+  return;
+  
+  /* Original WebSocket code - disabled
   if (gwSocket && gwSocket.readyState <= 1) return;
 
   console.log('[GW] Connecting to', GATEWAY_WS_URL);
@@ -156,6 +176,42 @@ export function gwConnect() {
   gwSocket.onerror = (e) => {
     console.error('[GW] WebSocket error:', e);
   };
+  */ // End of disabled WebSocket code
+}
+
+// Start polling for chat updates
+function startPolling() {
+  if (pollInterval) return;
+  
+  pollInterval = setInterval(async () => {
+    if (!currentAgentKey) return;
+    
+    try {
+      const res = await fetch(`${API_BASE}/chat/${currentAgentKey}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.ok && data.messages) {
+          // Check if we have new messages
+          const currentCount = chatMessagesCache.length;
+          if (data.messages.length > currentCount) {
+            // Update cache and re-render
+            chatMessagesCache = data.messages;
+            renderChatMessages(data.messages);
+          }
+        }
+      }
+    } catch (e) {
+      console.error('[Poll] Error:', e);
+    }
+  }, POLL_INTERVAL_MS);
+}
+
+// Stop polling
+function stopPolling() {
+  if (pollInterval) {
+    clearInterval(pollInterval);
+    pollInterval = null;
+  }
 }
 
 export function isGwConnected() {
