@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>The Office — Team HQ</title>
+  <title>The Office - Team HQ</title>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/apexcharts@3.45.1/dist/apexcharts.min.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    
+
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
@@ -17,7 +17,7 @@
       display: flex;
       overflow: hidden;
     }
-    
+
     /* Mobile menu button */
     .mobile-menu-btn {
       display: none;
@@ -35,11 +35,11 @@
       cursor: pointer;
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     }
-    
+
     .mobile-menu-btn:active {
       transform: scale(0.95);
     }
-    
+
     /* Overlay backdrop */
     .panel-overlay {
       display: none;
@@ -51,11 +51,11 @@
       background: rgba(0, 0, 0, 0.6);
       z-index: 999;
     }
-    
+
     .panel-overlay.active {
       display: block;
     }
-    
+
     /* Main office area */
     .office-container {
       flex: 1;
@@ -63,7 +63,7 @@
       padding-left: 340px;
       overflow: auto;
     }
-    
+
     h1 {
       text-align: center;
       margin-bottom: 20px;
@@ -71,7 +71,7 @@
       font-size: 1.5rem;
       color: #888;
     }
-    
+
     .office {
       max-width: 800px;
       margin: 0 auto;
@@ -82,7 +82,7 @@
       min-height: 600px;
       border: 1px solid #333;
     }
-    
+
     .zone {
       position: absolute;
       border-radius: 12px;
@@ -90,7 +90,7 @@
       background: rgba(255,255,255,0.03);
       border: 1px dashed rgba(255,255,255,0.1);
     }
-    
+
     .zone-label {
       font-size: 0.7rem;
       color: #555;
@@ -98,15 +98,15 @@
       letter-spacing: 1px;
       margin-bottom: 10px;
     }
-    
+
     /* Zones */
     .desks { top: 20px; left: 20px; width: 500px; height: 280px; }
     .conference { top: 320px; left: 20px; width: 500px; height: 150px; background: rgba(99, 102, 241, 0.05); }
     .kitchen { top: 20px; right: 20px; width: 220px; height: 200px; background: rgba(251, 146, 60, 0.05); }
     .finance-corner { top: 240px; right: 20px; width: 220px; height: 120px; background: rgba(34, 197, 94, 0.05); }
-    .marketing-nook { bottom: 100px; right: 20px; width: 220px; height: 120px; background: rgba(236, 72, 153, 0.05); }
+    .adventure-corner { bottom: 100px; right: 20px; width: 220px; height: 120px; background: rgba(139, 92, 246, 0.05); }
     .isla-desk { bottom: 20px; left: 50%; transform: translateX(-50%); width: 180px; height: 80px; background: rgba(14, 165, 233, 0.1); border: 1px solid rgba(14, 165, 233, 0.3); }
-    
+
     /* Agents */
     .agent {
       position: absolute;
@@ -116,17 +116,17 @@
       cursor: pointer;
       transition: transform 0.2s, filter 0.2s;
     }
-    
+
     .agent:hover {
       transform: scale(1.1);
       transition: transform 0.2s ease, top 1s ease-out, left 1s ease-out, right 1s ease-out, bottom 1s ease-out;
     }
-    
+
     .agent.selected {
       transform: scale(1.15);
       filter: drop-shadow(0 0 10px rgba(14, 165, 233, 0.5));
     }
-    
+
     .avatar {
       width: 50px;
       height: 50px;
@@ -138,7 +138,7 @@
       position: relative;
       box-shadow: 0 4px 15px rgba(0,0,0,0.3);
     }
-    
+
     .status-dot {
       position: absolute;
       bottom: 2px;
@@ -148,12 +148,12 @@
       border-radius: 50%;
       border: 2px solid #0f0f1a;
     }
-    
+
     .status-working { background: #22c55e; }
     .status-idle { background: #eab308; }
     .status-meeting { background: #8b5cf6; }
     .status-thinking { background: #3b82f6; }
-    
+
     .unread-badge {
       position: absolute;
       top: -4px;
@@ -172,16 +172,16 @@
       z-index: 10;
       animation: pulse-badge 2s infinite;
     }
-    
+
     .agent.has-unread .unread-badge {
       display: flex;
     }
-    
+
     @keyframes pulse-badge {
       0%, 100% { transform: scale(1); }
       50% { transform: scale(1.1); }
     }
-    
+
     @keyframes slideIn {
       from {
         transform: translateX(400px);
@@ -192,7 +192,7 @@
         opacity: 1;
       }
     }
-    
+
     @keyframes slideOut {
       from {
         transform: translateX(0);
@@ -203,7 +203,7 @@
         opacity: 0;
       }
     }
-    
+
     /* Responsive Design - Tablet & Mobile */
     @media (max-width: 1200px) {
       /* Tablet: Show mobile menu, keep most desktop layout */
@@ -212,21 +212,21 @@
         align-items: center;
         justify-content: center;
       }
-      
+
       .left-info-panel {
         transform: translateX(-100%);
         transition: transform 0.3s ease;
         z-index: 1000;
       }
-      
+
       .left-info-panel.mobile-visible {
         transform: translateX(0);
       }
-      
+
       .office-container {
         padding-left: 20px;
       }
-      
+
       .side-panel {
         position: fixed;
         right: 0;
@@ -238,18 +238,18 @@
         z-index: 1001;
       }
     }
-    
+
     @media (max-width: 768px) {
       /* Mobile: Chat-first interface */
       body {
         overflow: hidden;
       }
-      
+
       /* Hide office view on mobile, show chat instead */
       .office-container {
         display: none;
       }
-      
+
       /* Side panel becomes full-screen chat */
       .side-panel {
         position: fixed !important;
@@ -268,16 +268,16 @@
         flex-direction: column;
         overflow: hidden;
       }
-      
+
       .side-panel.hidden {
         display: none;
       }
-      
+
       /* Remove resize handle on mobile */
       .resize-handle {
         display: none;
       }
-      
+
       /* Mobile menu button in top-left - always on top */
       .mobile-menu-btn {
         display: flex !important;
@@ -296,7 +296,7 @@
         cursor: pointer;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
       }
-      
+
       /* Left info panel full screen overlay - slides over chat */
       .left-info-panel {
         position: fixed;
@@ -314,36 +314,36 @@
         transition: transform 0.3s ease;
         background: rgba(15, 15, 26, 0.98); /* Slightly more opaque on mobile */
       }
-      
+
       .left-info-panel.mobile-visible {
         transform: translateX(0);
       }
-      
+
       .left-info-panel.mobile-hidden {
         transform: translateX(-100%);
       }
-      
+
       /* Panel overlay darker on mobile - appears between chat and left panel */
       .panel-overlay {
         z-index: 1000;
         background: rgba(0, 0, 0, 0.7);
       }
-      
+
       /* Adjust panel header for mobile */
       .panel-header {
         padding: 12px 15px;
       }
-      
+
       .panel-header h2 {
         font-size: 1.1rem;
       }
-      
+
       /* Bigger touch targets for tabs */
       .panel-tab {
         padding: 12px 16px;
         font-size: 0.9rem;
       }
-      
+
       /* Chat input optimized for mobile keyboard */
       .chat-input-container {
         padding: 12px !important;
@@ -354,19 +354,19 @@
         background: #0f0f1a; /* Ensure it's visible */
         border-top: 1px solid #333 !important;
       }
-      
+
       #chatInput {
         font-size: 16px !important; /* Prevents iOS zoom */
         padding: 12px !important;
         min-height: 44px; /* iOS recommended tap target */
       }
-      
+
       #chatSend {
         padding: 12px 24px !important;
         font-size: 0.95rem;
         min-height: 44px; /* iOS recommended tap target */
       }
-      
+
       /* Ensure tab-pane fills available space */
       #tab-chat {
         display: flex !important;
@@ -374,28 +374,28 @@
         height: 100%;
         overflow: hidden;
       }
-      
+
       /* Chat messages should scroll, input should stay at bottom */
       #chatMessages {
         flex: 1 !important;
         overflow-y: auto !important;
         min-height: 0;
       }
-      
+
       /* Message bubbles more compact */
       .message-bubble {
         max-width: 85%;
         font-size: 0.9rem;
       }
     }
-    
+
     /* Bottom navigation bar for mobile */
     @media (max-width: 768px) {
       .mobile-bottom-nav {
         display: flex !important;
       }
     }
-    
+
     .mobile-bottom-nav {
       display: none;
       position: fixed;
@@ -411,11 +411,11 @@
       white-space: nowrap;
       scrollbar-width: none; /* Firefox */
     }
-    
+
     .mobile-bottom-nav::-webkit-scrollbar {
       display: none; /* Chrome/Safari */
     }
-    
+
     .mobile-nav-item {
       display: inline-flex;
       flex-direction: column;
@@ -430,26 +430,26 @@
       background: none;
       color: #888;
     }
-    
+
     .mobile-nav-item:active {
       background: rgba(14, 165, 233, 0.1);
     }
-    
+
     .mobile-nav-item.active {
       color: #0ea5e9;
       background: rgba(14, 165, 233, 0.1);
     }
-    
+
     .mobile-nav-emoji {
       font-size: 1.5rem;
       margin-bottom: 2px;
     }
-    
+
     .mobile-nav-name {
       font-size: 0.65rem;
       font-weight: 500;
     }
-    
+
     .mobile-nav-unread {
       position: absolute;
       top: 4px;
@@ -461,20 +461,20 @@
       font-size: 0.65rem;
       font-weight: 600;
     }
-    
+
     .agent-name {
       font-size: 0.75rem;
       margin-top: 5px;
       color: #ccc;
       font-weight: 600;
     }
-    
+
     .agent-role {
       font-size: 0.6rem;
       color: #888;
       margin-top: 1px;
     }
-    
+
     .agent-task {
       font-size: 0.55rem;
       color: #555;
@@ -485,7 +485,7 @@
       text-overflow: ellipsis;
       margin-top: 2px;
     }
-    
+
     /* Agent colors */
     .isla .avatar { background: linear-gradient(135deg, #0ea5e9, #06b6d4); }
     .marcus .avatar { background: linear-gradient(135deg, #6366f1, #8b5cf6); }
@@ -496,29 +496,31 @@
     .remy .avatar { background: linear-gradient(135deg, #fb923c, #f97316); }
     .lena .avatar { background: linear-gradient(135deg, #22c55e, #16a34a); }
     .val .avatar { background: linear-gradient(135deg, #22d3ee, #06b6d4); }
+    .atlas .avatar { background: linear-gradient(135deg, #8b5cf6, #7c3aed); }
     .dash .avatar { background: linear-gradient(135deg, #a78bfa, #c084fc); }
-    
+
     /* Positions - using CSS custom properties for animation */
     .agent {
       transition: top 1s ease-out, left 1s ease-out, right 1s ease-out, bottom 1s ease-out, transform 1s ease-out;
     }
-    
+
     .marcus { top: 50px; left: 40px; }
     .harper { top: 50px; left: 160px; }
     .eli { top: 50px; left: 280px; }
     .sage { top: 50px; left: 400px; }
     .dash { top: 170px; left: 40px; }
     .julie { top: 170px; left: 220px; }
-    
+
     .remy { top: 60px; right: 100px; }
     .lena { top: 140px; right: 100px; }
-    
+
     .val { top: 270px; right: 100px; }
-    
+    .atlas { bottom: 140px; right: 100px; }
+
     .isla { bottom: 35px; left: 50%; transform: translateX(-50%); }
     .isla:hover { transform: translateX(-50%) scale(1.1); transition: transform 0.2s ease; }
     .isla.selected { transform: translateX(-50%) scale(1.15); }
-    
+
     /* Conference table */
     .conference-table {
       position: absolute;
@@ -531,7 +533,7 @@
       border-radius: 30px;
       border: 1px solid rgba(99, 102, 241, 0.3);
     }
-    
+
     /* Legend */
     .legend {
       display: flex;
@@ -540,7 +542,7 @@
       margin-top: 20px;
       flex-wrap: wrap;
     }
-    
+
     .legend-item {
       display: flex;
       align-items: center;
@@ -548,13 +550,13 @@
       font-size: 0.75rem;
       color: #666;
     }
-    
+
     .legend-dot {
       width: 10px;
       height: 10px;
       border-radius: 50%;
     }
-    
+
     /* Side Panel */
     .side-panel {
       width: 400px;
@@ -570,14 +572,14 @@
       overflow: hidden;
       position: relative;
     }
-    
+
     .side-panel.hidden {
       transform: translateX(100%);
       width: 0;
       min-width: 0;
       overflow: hidden;
     }
-    
+
     .resize-handle {
       position: absolute;
       left: 0;
@@ -589,12 +591,12 @@
       z-index: 1000;
       transition: background 0.2s;
     }
-    
+
     .resize-handle:hover,
     .resize-handle.dragging {
       background: rgba(14, 165, 233, 0.3);
     }
-    
+
     .resize-handle::before {
       content: '';
       position: absolute;
@@ -606,11 +608,11 @@
       background: #333;
       border-radius: 1px;
     }
-    
+
     .resize-handle.dragging::before {
       background: #0ea5e9;
     }
-    
+
     .panel-header {
       padding: 20px;
       border-bottom: 1px solid #333;
@@ -618,7 +620,7 @@
       align-items: center;
       gap: 15px;
     }
-    
+
     .panel-avatar {
       width: 50px;
       height: 50px;
@@ -628,17 +630,17 @@
       justify-content: center;
       font-size: 1.5rem;
     }
-    
+
     .panel-info h2 {
       font-size: 1.1rem;
       font-weight: 600;
     }
-    
+
     .panel-info .role {
       font-size: 0.8rem;
       color: #888;
     }
-    
+
     .panel-close {
       margin-left: auto;
       background: none;
@@ -647,15 +649,15 @@
       font-size: 1.5rem;
       cursor: pointer;
     }
-    
+
     .panel-close:hover { color: #fff; }
-    
+
     /* Tabs */
     .panel-tabs {
       display: flex;
       border-bottom: 1px solid #333;
     }
-    
+
     .panel-tab {
       flex: 1;
       padding: 12px;
@@ -666,13 +668,13 @@
       border-bottom: 2px solid transparent;
       transition: all 0.2s;
     }
-    
+
     .panel-tab:hover { color: #aaa; }
     .panel-tab.active {
       color: #0ea5e9;
       border-bottom-color: #0ea5e9;
     }
-    
+
     /* Tab Content */
     .tab-content {
       flex: 1;
@@ -680,7 +682,7 @@
       display: flex;
       flex-direction: column;
     }
-    
+
     .tab-pane {
       display: none;
       flex: 1;
@@ -688,14 +690,14 @@
       padding: 0;
       min-height: 0;
     }
-    
+
     .tab-pane.active { display: flex; flex-direction: column; }
-    
+
     .tab-pane#tab-memory, .tab-pane#tab-status, .tab-pane#tab-files {
       padding: 15px;
       overflow-y: auto;
     }
-    
+
     /* Chat - Message Bubbles */
     .chat-messages {
       flex: 1;
@@ -706,7 +708,7 @@
       padding: 15px;
       background: #16213e;
     }
-    
+
     .message-bubble {
       display: flex;
       gap: 8px;
@@ -714,16 +716,16 @@
       align-items: flex-end;
       margin-bottom: 4px;
     }
-    
+
     .message-bubble.them {
       align-self: flex-start;
     }
-    
+
     .message-bubble.you {
       align-self: flex-end;
       flex-direction: row-reverse;
     }
-    
+
     .bubble-avatar {
       width: 32px;
       height: 32px;
@@ -734,21 +736,21 @@
       font-size: 16px;
       flex-shrink: 0;
     }
-    
+
     .bubble-avatar.bot {
       background: linear-gradient(135deg, #0ea5e9, #06b6d4);
     }
-    
+
     .bubble-avatar.jeremy {
       background: linear-gradient(135deg, #f43f5e, #ec4899);
     }
-    
+
     .bubble-content {
       display: flex;
       flex-direction: column;
       gap: 2px;
     }
-    
+
     .bubble-text {
       padding: 10px 14px;
       border-radius: 16px;
@@ -757,29 +759,29 @@
       word-wrap: break-word;
       white-space: pre-wrap;
     }
-    
+
     .message-bubble.them .bubble-text {
       background: #2a2a3e;
       color: #dcddde;
       border-bottom-left-radius: 4px;
     }
-    
+
     .message-bubble.you .bubble-text {
       background: linear-gradient(135deg, #0ea5e9, #0284c7);
       color: #fff;
       border-bottom-right-radius: 4px;
     }
-    
+
     .bubble-time {
       font-size: 0.7rem;
       color: #72767d;
       padding: 0 8px;
     }
-    
+
     .message-bubble.you .bubble-time {
       text-align: right;
     }
-    
+
     .bubble-text code {
       background: rgba(0, 0, 0, 0.3);
       padding: 2px 5px;
@@ -787,7 +789,7 @@
       font-family: 'Consolas', 'Monaco', monospace;
       font-size: 0.85em;
     }
-    
+
     .bubble-text pre {
       background: rgba(0, 0, 0, 0.3);
       padding: 8px;
@@ -795,57 +797,57 @@
       overflow-x: auto;
       margin: 6px 0;
     }
-    
+
     .bubble-text pre code {
       background: none;
       padding: 0;
     }
-    
+
     .bubble-text strong {
       font-weight: 700;
     }
-    
+
     .bubble-text em {
       font-style: italic;
     }
-    
+
     .bubble-text a {
       color: inherit;
       text-decoration: underline;
       opacity: 0.9;
     }
-    
+
     .bubble-text a:hover {
       opacity: 1;
     }
-    
+
     .bubble-text h1, .bubble-text h2, .bubble-text h3,
     .bubble-text h4, .bubble-text h5, .bubble-text h6 {
       font-weight: 700;
       margin: 8px 0 4px 0;
       line-height: 1.3;
     }
-    
+
     .bubble-text h1 { font-size: 1.4em; }
     .bubble-text h2 { font-size: 1.3em; }
     .bubble-text h3 { font-size: 1.2em; }
     .bubble-text h4 { font-size: 1.1em; }
     .bubble-text h5 { font-size: 1em; }
     .bubble-text h6 { font-size: 0.95em; }
-    
+
     .bubble-text p {
       margin: 4px 0;
     }
-    
+
     .bubble-text ul, .bubble-text ol {
       margin: 4px 0;
       padding-left: 20px;
     }
-    
+
     .bubble-text li {
       margin: 2px 0;
     }
-    
+
     .bubble-text blockquote {
       border-left: 3px solid rgba(255, 255, 255, 0.3);
       margin: 6px 0;
@@ -853,13 +855,13 @@
       background: rgba(0, 0, 0, 0.2);
       font-style: italic;
     }
-    
+
     .bubble-text hr {
       border: none;
       border-top: 1px solid rgba(255, 255, 255, 0.2);
       margin: 8px 0;
     }
-    
+
     /* Chart container */
     .chart-container {
       background: rgba(0, 0, 0, 0.2);
@@ -868,7 +870,7 @@
       margin: 10px 0;
       border: 1px solid rgba(255, 255, 255, 0.1);
     }
-    
+
     .chart-title {
       font-size: 0.85rem;
       font-weight: 600;
@@ -876,41 +878,41 @@
       margin-bottom: 10px;
       text-align: center;
     }
-    
+
     .chart-wrapper {
       min-height: 200px;
     }
-    
+
     .bubble-text table {
       border-collapse: collapse;
       margin: 6px 0;
       font-size: 0.9em;
     }
-    
+
     .bubble-text th {
       background: rgba(0, 0, 0, 0.3);
       padding: 4px 8px;
       border: 1px solid rgba(255, 255, 255, 0.2);
       font-weight: 600;
     }
-    
+
     .bubble-text td {
       padding: 4px 8px;
       border: 1px solid rgba(255, 255, 255, 0.2);
     }
-    
+
     .typing-indicator {
       color: #888;
       font-style: italic;
     }
-    
+
     .chat-input-container {
       display: flex;
       gap: 10px;
       padding-top: 10px;
       border-top: 1px solid #333;
     }
-    
+
     .chat-input {
       flex: 1;
       background: #1e1e2e;
@@ -920,12 +922,12 @@
       color: #fff;
       font-size: 0.85rem;
     }
-    
+
     .chat-input:focus {
       outline: none;
       border-color: #0ea5e9;
     }
-    
+
     .chat-send {
       background: #0ea5e9;
       border: none;
@@ -935,14 +937,14 @@
       cursor: pointer;
       font-weight: 500;
     }
-    
+
     .chat-send:hover { background: #0284c7; }
-    
+
     /* Memory */
     .memory-section {
       margin-bottom: 20px;
     }
-    
+
     .memory-section h3 {
       font-size: 0.75rem;
       color: #666;
@@ -950,7 +952,7 @@
       letter-spacing: 1px;
       margin-bottom: 10px;
     }
-    
+
     .memory-item {
       background: #1e1e2e;
       border-radius: 8px;
@@ -959,18 +961,18 @@
       font-size: 0.8rem;
       color: #aaa;
     }
-    
+
     .memory-item .source {
       font-size: 0.65rem;
       color: #555;
       margin-top: 5px;
     }
-    
+
     /* Status */
     .status-section {
       margin-bottom: 20px;
     }
-    
+
     .status-section h3 {
       font-size: 0.75rem;
       color: #666;
@@ -978,39 +980,39 @@
       letter-spacing: 1px;
       margin-bottom: 10px;
     }
-    
+
     .status-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 10px;
     }
-    
+
     .status-card {
       background: #1e1e2e;
       border-radius: 8px;
       padding: 12px;
     }
-    
+
     .status-card .label {
       font-size: 0.65rem;
       color: #555;
       text-transform: uppercase;
     }
-    
+
     .status-card .value {
       font-size: 1rem;
       font-weight: 600;
       margin-top: 4px;
     }
-    
+
     .status-card .value.green { color: #22c55e; }
     .status-card .value.yellow { color: #eab308; }
     .status-card .value.blue { color: #3b82f6; }
-    
+
     .recent-activity {
       margin-top: 20px;
     }
-    
+
     .activity-item {
       display: flex;
       gap: 10px;
@@ -1018,17 +1020,17 @@
       border-bottom: 1px solid #222;
       font-size: 0.8rem;
     }
-    
+
     .activity-time {
       color: #555;
       font-size: 0.7rem;
       white-space: nowrap;
     }
-    
+
     .activity-text {
       color: #aaa;
     }
-    
+
     /* Quote */
     .agent-quote {
       background: #1e1e2e;
@@ -1040,7 +1042,7 @@
       font-size: 0.8rem;
       border-left: 3px solid #333;
     }
-    
+
     /* Files Tab */
     .files-section {
       height: 100%;
@@ -1106,7 +1108,7 @@
       max-height: 60px;
       overflow: hidden;
     }
-    
+
     /* Folder structure styles */
     .folder-item {
       margin-bottom: 4px;
@@ -1143,7 +1145,7 @@
     .folder-item.collapsed .folder-children {
       display: none;
     }
-    
+
     .file-viewer {
       position: fixed;
       top: 0;
@@ -1194,7 +1196,7 @@
       max-width: 900px;
       margin: 0 auto;
     }
-    
+
     /* Markdown styling */
     .markdown-view h1 {
       font-size: 2rem;
@@ -1339,13 +1341,13 @@
       text-align: center;
       padding: 40px 20px;
     }
-    
+
     /* Interaction lines animation */
     @keyframes pulse-line {
       0%, 100% { opacity: 0.4; }
       50% { opacity: 1; }
     }
-    
+
     /* Left Info Panel */
     .left-info-panel {
       position: fixed;
@@ -1364,11 +1366,11 @@
       overflow-y: auto;
       transition: transform 0.3s ease;
     }
-    
+
     .left-info-panel.mobile-hidden {
       transform: translateX(-340px);
     }
-    
+
     /* Left Panel Tabs */
     .left-panel-tabs {
       display: flex;
@@ -1378,7 +1380,7 @@
       padding-bottom: 10px;
       flex-shrink: 0;
     }
-    
+
     .left-tab {
       flex: 1;
       padding: 8px 4px;
@@ -1389,38 +1391,38 @@
       border-radius: 6px;
       transition: all 0.2s ease;
     }
-    
+
     .left-tab:hover {
       color: #888;
       background: rgba(255, 255, 255, 0.05);
     }
-    
+
     .left-tab.active {
       color: #8b5cf6;
       background: rgba(139, 92, 246, 0.1);
     }
-    
+
     .left-tab-content {
       display: none;
       flex: 1;
       overflow-y: auto;
       flex-direction: column;
     }
-    
+
     .left-tab-content.active {
       display: flex;
     }
-    
+
     .tab-header {
       font-size: 0.65rem;
       color: #555;
       margin-bottom: 10px;
     }
-    
+
     .info-section {
       flex-shrink: 0;
     }
-    
+
     .info-section h3 {
       font-size: 0.75rem;
       color: #666;
@@ -1431,14 +1433,14 @@
       justify-content: space-between;
       align-items: center;
     }
-    
+
     .info-section .updated {
       font-size: 0.65rem;
       color: #555;
       text-transform: none;
       letter-spacing: 0;
     }
-    
+
     .interaction-item {
       display: flex;
       flex-direction: column;
@@ -1446,37 +1448,37 @@
       border-bottom: 1px solid #222;
       font-size: 0.8rem;
     }
-    
+
     .interaction-item:last-child {
       border-bottom: none;
     }
-    
+
     .interaction-agents {
       color: #8b5cf6;
       font-weight: 500;
     }
-    
+
     .interaction-topic {
       color: #888;
       font-size: 0.75rem;
       margin-top: 2px;
     }
-    
+
     .no-interactions {
       color: #555;
       font-size: 0.8rem;
       text-align: center;
       padding: 10px;
     }
-    
+
     .priority-section {
       margin-bottom: 12px;
     }
-    
+
     .priority-section:last-child {
       margin-bottom: 0;
     }
-    
+
     .priority-section-title {
       font-size: 0.7rem;
       color: #0ea5e9;
@@ -1486,7 +1488,7 @@
       justify-content: space-between;
       align-items: center;
     }
-    
+
     .clear-completed-btn {
       font-size: 0.65rem;
       color: #555;
@@ -1497,12 +1499,12 @@
       cursor: pointer;
       transition: all 0.2s;
     }
-    
+
     .clear-completed-btn:hover {
       color: #f59e0b;
       border-color: #f59e0b;
     }
-    
+
     .priority-item {
       font-size: 0.8rem;
       color: #aaa;
@@ -1510,78 +1512,78 @@
       padding-left: 12px;
       position: relative;
     }
-    
+
     .priority-item::before {
       content: '•';
       position: absolute;
       left: 0;
       color: #555;
     }
-    
+
     .priority-item.blocked {
       color: #f59e0b;
     }
-    
+
     .priority-item.note {
       color: #888;
       font-size: 0.75rem;
     }
-    
+
     .standup-item {
       font-size: 0.8rem;
       color: #aaa;
       padding: 5px 0;
       line-height: 1.5;
     }
-    
+
     .standup-item .agent-emoji {
       display: inline-block;
       width: 20px;
     }
-    
+
     .standup-item .agent-name {
       font-weight: 600;
       color: #0ea5e9;
     }
-    
+
     .standup-item .agent-status {
       color: #ccc;
     }
-    
+
     /* Expanded standup items for tab view */
     .standup-item-expanded {
       padding: 10px 0;
       border-bottom: 1px solid #222;
     }
-    
+
     .standup-item-expanded:last-child {
       border-bottom: none;
     }
-    
+
     .standup-agent {
       display: flex;
       align-items: center;
       gap: 8px;
       margin-bottom: 4px;
     }
-    
+
     .standup-agent .agent-emoji {
       font-size: 1.1rem;
     }
-    
+
     .standup-agent .agent-name {
       font-weight: 600;
       color: #8b5cf6;
       font-size: 0.85rem;
     }
-    
+
     .standup-status {
       color: #aaa;
       font-size: 0.8rem;
       padding-left: 28px;
       line-height: 1.4;
     }
-    
+
     .action-item {
       font-size: 0.8rem;
       color: #aaa;
@@ -1591,11 +1593,11 @@
       cursor: pointer;
       transition: color 0.2s;
     }
-    
+
     .action-item:hover {
       color: #0ea5e9;
     }
-    
+
     .action-item input[type="checkbox"] {
       position: absolute;
       left: 0;
@@ -1605,16 +1607,16 @@
       height: 16px;
       accent-color: #0ea5e9;
     }
-    
+
     .action-item.completed {
       color: #555;
       text-decoration: line-through;
     }
-    
+
     .action-item-text {
       display: inline;
     }
-    
+
     .section-divider {
       height: 1px;
       background: linear-gradient(90deg, transparent, #333, transparent);
@@ -1625,40 +1627,40 @@
 <body>
   <!-- Mobile menu button -->
   <button class="mobile-menu-btn" id="mobileMenuBtn">☰</button>
-  
+
   <!-- Overlay backdrop -->
   <div class="panel-overlay" id="panelOverlay"></div>
-  
+
   <div class="office-container">
-    <h1 id="officeTime">🏢 The Office — Loading...</h1>
-    
+    <h1 id="officeTime">🏢 The Office - Loading...</h1>
+
     <div class="office">
       <!-- Zones -->
       <div class="zone desks">
         <div class="zone-label">Desks</div>
       </div>
-      
+
       <div class="zone conference">
         <div class="zone-label">Conference Room</div>
         <div class="conference-table"></div>
       </div>
-      
+
       <div class="zone kitchen">
         <div class="zone-label">Kitchen</div>
       </div>
-      
+
       <div class="zone finance-corner">
         <div class="zone-label">Finance</div>
       </div>
-      
-      <div class="zone marketing-nook">
-        <div class="zone-label">Marketing</div>
+
+      <div class="zone adventure-corner">
+        <div class="zone-label">Adventure</div>
       </div>
-      
+
       <div class="zone isla-desk">
         <div class="zone-label" style="text-align: center;">Chief of Staff</div>
       </div>
-      
+
       <!-- Agents -->
       <div class="agent marcus" data-name="Marcus Chen" data-role="Dev Manager" data-task="Reviewing PR #189" data-quote="Technical debt is just procrastination with a fancier name." data-emoji="🔧">
         <div class="avatar">🔧<div class="status-dot status-working"></div><div class="unread-badge">💬</div></div>
@@ -1666,63 +1668,70 @@
         <div class="agent-role">Dev Manager</div>
         <div class="agent-task">Reviewing PR</div>
       </div>
-      
+
       <div class="agent harper" data-name="Harper Reyes" data-role="QA Manager" data-task="Testing Build 193" data-quote="If you didn't test it, you don't know if it works." data-emoji="🔍">
         <div class="avatar">🔍<div class="status-dot status-working"></div><div class="unread-badge">💬</div></div>
         <div class="agent-name">Harper</div>
         <div class="agent-role">QA Manager</div>
         <div class="agent-task">Testing build</div>
       </div>
-      
+
       <div class="agent eli" data-name="Eli Vasquez" data-role="Chief Architect" data-task="Reviewing DiveStreams patterns" data-quote="The goal isn't elegant code. It's code that survives next quarter." data-emoji="🏗️">
         <div class="avatar">🏗️<div class="status-dot status-thinking"></div><div class="unread-badge">💬</div></div>
         <div class="agent-name">Eli</div>
         <div class="agent-role">Chief Architect</div>
         <div class="agent-task">Architecture review</div>
       </div>
-      
+
       <div class="agent sage" data-name="Sage Okonkwo" data-role="Researcher" data-task="Competitor analysis" data-quote="The best feature ideas are already in your support tickets." data-emoji="🔭">
         <div class="avatar">🔭<div class="status-dot status-idle"></div><div class="unread-badge">💬</div></div>
         <div class="agent-name">Sage</div>
         <div class="agent-role">Researcher</div>
         <div class="agent-task">Research</div>
       </div>
-      
+
       <div class="agent julie" data-name="Julie Marquez" data-role="Marketing Manager" data-task="MHC launch copy" data-quote="People don't buy features. They buy better versions of themselves." data-emoji="📣">
         <div class="avatar">📣<div class="status-dot status-working"></div><div class="unread-badge">💬</div></div>
         <div class="agent-name">Julie</div>
         <div class="agent-role">Marketing</div>
         <div class="agent-task">Launch copy</div>
       </div>
-      
+
       <div class="agent dash" data-name="Dash" data-role="Dashboard Engineer" data-task="Building office UI" data-quote="Good dashboards make complexity visible. Great ones make it actionable." data-emoji="🎨">
         <div class="avatar">🎨<div class="status-dot status-working"></div><div class="unread-badge">💬</div></div>
         <div class="agent-name">Dash</div>
         <div class="agent-role">Dashboard</div>
         <div class="agent-task">Building UI</div>
       </div>
-      
+
       <div class="agent remy" data-name="Remy Delacroix" data-role="Chef" data-task="Planning tomorrow's dinner" data-quote="You don't need more recipes. You need a system." data-emoji="🍳">
         <div class="avatar">🍳<div class="status-dot status-idle"></div><div class="unread-badge">💬</div></div>
         <div class="agent-name">Remy</div>
         <div class="agent-role">Chef</div>
         <div class="agent-task">Meal planning</div>
       </div>
-      
+
       <div class="agent lena" data-name="Lena Torres" data-role="Gym Coach" data-task="Reviewing week's progress" data-quote="You don't have to feel like it. You just have to show up." data-emoji="💪">
         <div class="avatar">💪<div class="status-dot status-idle"></div><div class="unread-badge">💬</div></div>
         <div class="agent-name">Lena</div>
         <div class="agent-role">Gym Coach</div>
         <div class="agent-task">Progress review</div>
       </div>
-      
+
       <div class="agent val" data-name="Val Oduya" data-role="Finance Manager" data-task="Weekly budget prep" data-quote="Wealth isn't about what you make. It's about what you keep." data-emoji="💰">
         <div class="avatar">💰<div class="status-dot status-working"></div><div class="unread-badge">💬</div></div>
         <div class="agent-name">Val</div>
         <div class="agent-role">Finance</div>
         <div class="agent-task">Budget prep</div>
       </div>
-      
+
+      <div class="agent atlas" data-name="Atlas" data-role="Travel Planner" data-task="Ready for trips" data-quote="The best trip is the one you actually take." data-emoji="🗺️">
+        <div class="avatar">🗺️<div class="status-dot status-idle"></div><div class="unread-badge">💬</div></div>
+        <div class="agent-name">Atlas</div>
+        <div class="agent-role">Travel</div>
+        <div class="agent-task">Ready</div>
+      </div>
+
       <div class="agent isla" data-name="Isla" data-role="Chief of Staff" data-task="Team coordination" data-quote="Sycophants are useless. I'd rather be helpful than agreeable." data-emoji="🏝️">
         <div class="avatar">🏝️<div class="status-dot status-working"></div><div class="unread-badge">💬</div></div>
         <div class="agent-name">Isla</div>
@@ -1730,7 +1739,7 @@
         <div class="agent-task">Coordinating</div>
       </div>
     </div>
-    
+
     <div class="legend">
       <div class="legend-item"><div class="legend-dot status-working"></div> Working</div>
       <div class="legend-item"><div class="legend-dot status-thinking"></div> Thinking</div>
@@ -1738,7 +1747,7 @@
       <div class="legend-item"><div class="legend-dot status-meeting"></div> In Meeting</div>
     </div>
   </div>
-  
+
   <!-- Left Info Panel -->
   <div class="left-info-panel">
     <!-- Tab Navigation -->
@@ -1747,7 +1756,7 @@
       <div class="left-tab" data-tab="standup">📋 Standup</div>
       <div class="left-tab" data-tab="interactions">🔗 Activity</div>
     </div>
-    
+
     <!-- Priorities Tab -->
     <div class="left-tab-content active" id="tab-priorities">
       <div class="tab-header">
@@ -1757,7 +1766,7 @@
         <div class="no-interactions">Loading...</div>
       </div>
     </div>
-    
+
     <!-- Daily Standup Tab -->
     <div class="left-tab-content" id="tab-standup">
       <div class="tab-header">
@@ -1767,7 +1776,7 @@
         <div class="no-interactions">Loading...</div>
       </div>
     </div>
-    
+
     <!-- Recent Interactions Tab -->
     <div class="left-tab-content" id="tab-interactions">
       <div class="tab-header">Recent Activity</div>
@@ -1776,7 +1785,7 @@
       </div>
     </div>
   </div>
-  
+
   <!-- Side Panel -->
   <div class="side-panel hidden" id="sidePanel">
     <div class="resize-handle" id="resizeHandle"></div>
@@ -1788,14 +1797,14 @@
       </div>
       <button class="panel-close" id="panelClose">×</button>
     </div>
-    
+
     <div class="panel-tabs">
       <div class="panel-tab active" data-tab="chat">💬 Chat</div>
       <div class="panel-tab" data-tab="memory">🧠 Memory</div>
       <div class="panel-tab" data-tab="status">📊 Status</div>
       <div class="panel-tab" data-tab="files">📁 Files</div>
     </div>
-    
+
     <div class="tab-content">
       <!-- Chat Tab -->
       <div class="tab-pane active" id="tab-chat">
@@ -1811,21 +1820,21 @@
           <button id="chatSend" style="background: #5865F2; border: none; border-radius: 8px; padding: 10px 20px; color: white; cursor: pointer; font-weight: 500; flex-shrink: 0;">Send</button>
         </div>
       </div>
-      
+
       <!-- Memory Tab -->
       <div class="tab-pane" id="tab-memory">
         <div class="memory-section">
           <h3>Loading...</h3>
         </div>
       </div>
-      
+
       <!-- Status Tab -->
       <div class="tab-pane" id="tab-status">
         <div class="status-section">
           <h3>Loading...</h3>
         </div>
       </div>
-      
+
       <!-- Files Tab -->
       <div class="tab-pane" id="tab-files">
         <div class="files-section">
@@ -1840,7 +1849,7 @@
       </div>
     </div>
   </div>
-  
+
   <!-- Mobile Bottom Navigation -->
   <div class="mobile-bottom-nav" id="mobileBottomNav">
     <button class="mobile-nav-item" data-agent="isla">
@@ -1883,6 +1892,10 @@
       <div class="mobile-nav-emoji">💰</div>
       <div class="mobile-nav-name">Val</div>
     </button>
+    <button class="mobile-nav-item" data-agent="atlas">
+      <div class="mobile-nav-emoji">🗺️</div>
+      <div class="mobile-nav-name">Atlas</div>
+    </button>
   </div>
   
   <script src="config.js"></script>
@@ -1894,26 +1907,26 @@
     const chatInput = document.getElementById('chatInput');
     const chatSend = document.getElementById('chatSend');
     const chatMessages = document.getElementById('chatMessages');
-    
+
     let selectedAgent = null;
-    
+
     // Update office time display
     function updateOfficeTime() {
       const now = new Date();
       const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
       const dayName = days[now.getDay()];
-      const time = now.toLocaleTimeString('en-US', { 
-        hour: 'numeric', 
+      const time = now.toLocaleTimeString('en-US', {
+        hour: 'numeric',
         minute: '2-digit',
-        hour12: true 
+        hour12: true
       });
-      document.getElementById('officeTime').textContent = `🏢 The Office — ${dayName} ${time}`;
+      document.getElementById('officeTime').textContent = `🏢 The Office - ${dayName} ${time}`;
     }
-    
+
     // Update immediately and every minute
     updateOfficeTime();
     setInterval(updateOfficeTime, 60000);
-    
+
     // Agent greetings
     const agentGreetings = {
       isla: "Hey! What can I help you with?",
@@ -1927,7 +1940,7 @@
       lena: "Ready when you are. What's up?",
       val: "Numbers looking good. What do you need?"
     };
-    
+
     // Agent channel names (no Discord dependency)
     const agentChannels = {
       isla: { name: "#hq" },
@@ -1942,10 +1955,10 @@
       val: { name: "#finance" }
     };
 
-    // API endpoint — same origin (server.js on port 3000)
+    // API endpoint - same origin (server.js on port 3000)
     const API_BASE = '/api';
 
-    // Gateway WebSocket config — proxied through dashboard server
+    // Gateway WebSocket config - proxied through dashboard server
     const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const GATEWAY_WS_URL = `${wsProto}//${window.location.host}/gw`;
     const GATEWAY_TOKEN = config.gatewayToken;
@@ -2031,7 +2044,7 @@
                 if (text) cb.onDelta(text, p);
               }
               else if (p.state === 'final') {
-                // Final event may carry the complete message — apply it before finalizing
+                // Final event may carry the complete message - apply it before finalizing
                 if (p.message) {
                   const text = extractMessageText(p.message);
                   if (text) cb.onDelta(text, p);
@@ -2092,7 +2105,7 @@
 
     // Cache for agent data
     let agentMemoryCache = {};
-    
+
     // Fetch agent memory from API
     async function fetchAgentMemory(agentKey) {
       if (agentMemoryCache[agentKey]) return agentMemoryCache[agentKey];
@@ -2106,12 +2119,12 @@
       } catch (e) { console.log('Memory fetch failed:', e); }
       return { knowledge: [{ text: "Unable to load memory" }], learned: [], pending: [] };
     }
-    
+
     // Clear cache to force refresh
     function clearMemoryCache() {
       agentMemoryCache = {};
     }
-    
+
     // Status polling
     async function pollStatus() {
       try {
@@ -2124,19 +2137,19 @@
         console.log('Status poll failed:', e);
       }
     }
-    
+
     function updateStatusIndicators(statuses) {
       for (const [agentKey, status] of Object.entries(statuses)) {
         const agentEl = document.querySelector(`.agent.${agentKey}`);
         if (!agentEl) continue;
-        
+
         const statusDot = agentEl.querySelector('.status-dot');
         const taskEl = agentEl.querySelector('.agent-task');
-        
+
         if (statusDot) {
           // Remove all status classes
           statusDot.classList.remove('status-working', 'status-idle', 'status-thinking', 'status-meeting');
-          
+
           // Add appropriate class
           switch (status.state) {
             case 'working':
@@ -2152,19 +2165,19 @@
               statusDot.classList.add('status-idle');
           }
         }
-        
+
         if (taskEl && status.task) {
           taskEl.textContent = status.task;
         }
       }
     }
-    
+
     // Poll every 10 seconds
     setInterval(pollStatus, 10000);
-    
+
     // Initial poll
     pollStatus();
-    
+
     // Interactions
     async function pollInteractions() {
       try {
@@ -2178,23 +2191,23 @@
         console.log('Interactions poll failed:', e);
       }
     }
-    
+
     function drawInteractionLines(interactions) {
       // Remove existing lines
       document.querySelectorAll('.interaction-line').forEach(el => el.remove());
       // Interaction lines disabled - they cause layout thrashing with agent animations.
       // The interaction feed panel shows active conversations instead.
     }
-    
+
     function updateInteractionFeed(interactions) {
       const feed = document.getElementById('interactionFeed');
       if (!feed) return;
-      
+
       if (interactions.length === 0) {
         feed.innerHTML = '<div class="no-interactions">No recent interactions</div>';
         return;
       }
-      
+
       feed.innerHTML = interactions.slice(0, 5).map(i => `
         <div class="interaction-item">
           <span class="interaction-agents">${i.from} → ${i.to}</span>
@@ -2202,11 +2215,11 @@
         </div>
       `).join('');
     }
-    
+
     // Poll interactions every 5 seconds
     setInterval(pollInteractions, 5000);
     pollInteractions();
-    
+
     // Action Items Management
     async function getActionItems() {
       // Fetch from server
@@ -2223,27 +2236,27 @@
       }
       return [];
     }
-    
+
     async function saveActionItems(items) {
       // Not used anymore - we update individual items via API
     }
-    
+
     function addActionItem(text) {
       // This is called by the global API function after the item is added server-side
       fetchPriorities(); // Refresh display
     }
-    
+
     async function handleActionItemToggle(e) {
       const idx = parseInt(e.target.dataset.actionIdx);
       const completed = e.target.checked;
-      
+
       try {
         const response = await fetch(`${API_BASE}/action-items/${idx}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ completed })
         });
-        
+
         if (response.ok) {
           // Update parent div styling
           const actionDiv = e.target.closest('.action-item');
@@ -2259,13 +2272,13 @@
         e.target.checked = !completed;
       }
     }
-    
+
     function escapeHtml(text) {
       const div = document.createElement('div');
       div.textContent = text;
       return div.innerHTML;
     }
-    
+
     // API to add action items (called by agents or from console)
     window.addActionItemFromAgent = async function(text, agentName) {
       try {
@@ -2274,7 +2287,7 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ text, agent: agentName })
         });
-        
+
         const result = await response.json();
         if (result.ok) {
           console.log(`✅ Action item added by ${agentName || 'system'}: ${text}`);
@@ -2287,7 +2300,7 @@
         return false;
       }
     };
-    
+
     // Fetch and display Jeremy's priorities
     async function fetchPriorities() {
       try {
@@ -2302,17 +2315,17 @@
         console.log('Priorities fetch failed:', e);
       }
     }
-    
+
     async function renderPriorities(data) {
       const container = document.getElementById('prioritiesContent');
       const updatedEl = document.getElementById('prioritiesUpdated');
-      
+
       if (data.updated) {
         updatedEl.textContent = data.updated;
       }
-      
+
       let html = '';
-      
+
       // Action Items (from server)
       const actionItems = await getActionItems();
       if (actionItems.length > 0) {
@@ -2336,7 +2349,7 @@
         });
         html += '</div>';
       }
-      
+
       if (data.focus && data.focus.length > 0) {
         html += '<div class="priority-section"><div class="priority-section-title">Focus</div>';
         data.focus.forEach(item => {
@@ -2344,7 +2357,7 @@
         });
         html += '</div>';
       }
-      
+
       if (data.blocked && data.blocked.length > 0) {
         html += '<div class="priority-section"><div class="priority-section-title">Blocked</div>';
         data.blocked.forEach(item => {
@@ -2352,7 +2365,7 @@
         });
         html += '</div>';
       }
-      
+
       if (data.notes && data.notes.length > 0) {
         html += '<div class="priority-section"><div class="priority-section-title">Notes</div>';
         data.notes.forEach(item => {
@@ -2360,31 +2373,31 @@
         });
         html += '</div>';
       }
-      
+
       if (!html) {
         html = '<div class="no-interactions">No priorities set</div>';
       }
-      
+
       container.innerHTML = html;
-      
+
       // Attach checkbox event listeners
       container.querySelectorAll('.action-item input[type="checkbox"]').forEach(checkbox => {
         checkbox.addEventListener('change', handleActionItemToggle);
       });
-      
+
       // Attach clear completed button listener
       const clearBtn = document.getElementById('clearCompletedBtn');
       if (clearBtn) {
         clearBtn.addEventListener('click', clearCompletedActionItems);
       }
     }
-    
+
     async function clearCompletedActionItems() {
       try {
         const response = await fetch(`${API_BASE}/action-items/clear-completed`, {
           method: 'DELETE'
         });
-        
+
         if (response.ok) {
           const data = await response.json();
           console.log(`🗑️ Cleared ${data.removed} completed action items`);
@@ -2394,11 +2407,11 @@
         console.error('Failed to clear completed items:', e);
       }
     }
-    
+
     // Poll priorities every 30 seconds
     setInterval(fetchPriorities, 30000);
     fetchPriorities();
-    
+
     // Fetch and display daily standup
     async function fetchStandup() {
       try {
@@ -2413,20 +2426,20 @@
         console.log('Standup fetch failed:', e);
       }
     }
-    
+
     function renderStandup(data) {
       const container = document.getElementById('standupContent');
       const dateEl = document.getElementById('standupDate');
-      
+
       if (data.date) {
         dateEl.textContent = `${data.date}`;
       }
-      
+
       if (!data.updates || data.updates.length === 0) {
         container.innerHTML = '<div class="no-interactions">No updates</div>';
         return;
       }
-      
+
       let html = '';
       data.updates.forEach(update => {
         html += `
@@ -2439,57 +2452,57 @@
           </div>
         `;
       });
-      
+
       container.innerHTML = html;
     }
-    
+
     // Poll standup every 2 minutes
     setInterval(fetchStandup, 120000);
     fetchStandup();
-    
+
     // Left Panel Tab Switching
     document.querySelectorAll('.left-tab').forEach(tab => {
       tab.addEventListener('click', () => {
         const targetTab = tab.dataset.tab;
-        
+
         // Update active tab
         document.querySelectorAll('.left-tab').forEach(t => t.classList.remove('active'));
         tab.classList.add('active');
-        
+
         // Update active content
         document.querySelectorAll('.left-tab-content').forEach(c => c.classList.remove('active'));
         document.getElementById(`tab-${targetTab}`).classList.add('active');
-        
+
         // Save preference
         localStorage.setItem('leftPanelTab', targetTab);
       });
     });
-    
+
     // Restore last active tab
     const savedTab = localStorage.getItem('leftPanelTab');
     if (savedTab) {
       const tab = document.querySelector(`.left-tab[data-tab="${savedTab}"]`);
       if (tab) tab.click();
     }
-    
+
     // Folder state persistence
     function getFolderStates() {
       const stored = localStorage.getItem('folderStates');
       return stored ? JSON.parse(stored) : {};
     }
-    
+
     function saveFolderState(folderPath, isCollapsed) {
       const states = getFolderStates();
       states[folderPath] = isCollapsed;
       localStorage.setItem('folderStates', JSON.stringify(states));
     }
-    
+
     function isFolderCollapsed(folderPath) {
       const states = getFolderStates();
       // Default to expanded (false) if not set
       return states[folderPath] === true;
     }
-    
+
     // Fetch files for review
     async function fetchFiles() {
       try {
@@ -2504,17 +2517,17 @@
         console.log('Files fetch failed:', e);
       }
     }
-    
+
     function renderFiles(items) {
       const container = document.getElementById('filesList');
-      
+
       if (!items || items.length === 0) {
         container.innerHTML = '<div class="no-files">No files found</div>';
         return;
       }
-      
+
       container.innerHTML = renderFileTree(items, 0);
-      
+
       // Add click handlers for folder toggles
       container.querySelectorAll('.folder-toggle').forEach(toggle => {
         toggle.addEventListener('click', (e) => {
@@ -2522,12 +2535,12 @@
           const folder = e.target.closest('.folder-item');
           const folderPath = folder.dataset.path;
           const isCollapsed = folder.classList.toggle('collapsed');
-          
+
           // Save the state
           saveFolderState(folderPath, isCollapsed);
         });
       });
-      
+
       // Add click handlers for file items
       container.querySelectorAll('.file-item').forEach(fileItem => {
         fileItem.addEventListener('click', () => {
@@ -2537,7 +2550,7 @@
         });
       });
     }
-    
+
     function renderFileTree(items, depth = 0) {
       return items.map(item => {
         if (item.type === 'folder') {
@@ -2570,7 +2583,7 @@
         }
       }).join('');
     }
-    
+
     async function viewFile(filePath, fileName) {
       try {
         const response = await fetch(`${API_BASE}/file/${filePath}`);
@@ -2584,18 +2597,18 @@
         alert('Failed to load file: ' + e.message);
       }
     }
-    
+
     function showFileViewer(fileName, content) {
       const viewer = document.createElement('div');
       viewer.className = 'file-viewer';
-      
+
       // Check file type
       const isMarkdown = fileName.toLowerCase().endsWith('.md');
       const isHtml = fileName.toLowerCase().endsWith('.html') || fileName.toLowerCase().endsWith('.htm');
       let renderedContent;
       let viewerClass = '';
       let blobUrl = null;
-      
+
       if (isHtml) {
         // Render HTML in an iframe
         const blob = new Blob([content], { type: 'text/html' });
@@ -2635,9 +2648,9 @@
           <div class="file-viewer-content ${viewerClass}">${renderedContent}</div>
         `;
       }
-      
+
       document.body.appendChild(viewer);
-      
+
       // Add close button event listener
       const closeBtn = viewer.querySelector('.file-viewer-close');
       console.log('[File Viewer] Close button found:', closeBtn);
@@ -2658,11 +2671,11 @@
         console.error('[File Viewer] Close button NOT found!');
       }
     }
-    
+
     // Poll files every 30 seconds
     setInterval(fetchFiles, 30000);
     fetchFiles();
-    
+
     // Agent default positions (for returning after interaction)
     const defaultPositions = {
       marcus: { top: 50, left: 40 },
@@ -2674,9 +2687,10 @@
       remy: { top: 60, right: 100 },
       lena: { top: 140, right: 100 },
       val: { top: 270, right: 100 },
+      atlas: { bottom: 140, right: 100 },
       isla: { bottom: 35 }
     };
-    
+
     // Conference table seats (positions around the table)
     const conferenceSeats = [
       { top: 350, left: 120 },  // seat 1
@@ -2688,7 +2702,7 @@
       { top: 430, left: 320 },  // seat 7
       { top: 430, left: 420 },  // seat 8
     ];
-    
+
     // Movement state
     let seatAssignments = {}; // agent -> seat index
     let movedAgents = new Set(); // agents currently away from their desk
@@ -2726,7 +2740,7 @@
     function returnToDesk(agentKey) {
       const el = document.querySelector(`.agent.${agentKey}`);
       if (!el) return;
-      // Clear all inline position/transform styles — CSS class positions take over
+      // Clear all inline position/transform styles - CSS class positions take over
       // The transition property still animates the change smoothly
       el.style.removeProperty('left');
       el.style.removeProperty('right');
@@ -2779,7 +2793,7 @@
       ['isla', 'marcus', 'harper', 'eli', 'sage', 'dash', 'julie', 'remy', 'lena', 'val'].forEach(returnToDesk);
     }
 
-    // Poll-driven animation (called every 5s — must be cheap)
+    // Poll-driven animation (called every 5s - must be cheap)
     function animateAgentMovement(interactions) {
       if (currentMeeting) return;
       const interacting = new Set();
@@ -2816,20 +2830,20 @@
         console.log('Interactions poll failed:', e);
       }
     };
-    
+
     function renderMemorySection(data, agentKey, quote) {
       const memoryPane = document.getElementById('tab-memory');
-      
+
       let knowledgeHtml = '';
       if (data.knowledge && data.knowledge.length > 0) {
-        knowledgeHtml = data.knowledge.slice(0, 5).map(item => 
+        knowledgeHtml = data.knowledge.slice(0, 5).map(item =>
           `<div class="memory-item">${item.text}</div>`
         ).join('');
       }
-      
+
       let learnedHtml = '';
       if (data.learned && data.learned.length > 0) {
-        learnedHtml = data.learned.map(item => 
+        learnedHtml = data.learned.map(item =>
           `<div class="memory-item">
             ${item.text}
             <div class="source">${item.source} • ${item.when}</div>
@@ -2838,32 +2852,32 @@
       } else {
         learnedHtml = '<div class="memory-item">No cross-agent learnings yet</div>';
       }
-      
+
       memoryPane.innerHTML = `
         <div class="memory-section">
           <h3>Current Knowledge</h3>
           ${knowledgeHtml || '<div class="memory-item">No knowledge recorded</div>'}
         </div>
-        
+
         <div class="memory-section">
           <h3>Learned From Others</h3>
           ${learnedHtml}
         </div>
-        
+
         <div class="agent-quote">"${quote}"</div>
       `;
     }
-    
+
     function renderStatusSection(data, quote) {
       const statusPane = document.getElementById('tab-status');
-      
+
       // Today section (for daily-status agents like Remy, Lena)
       let todayHtml = '';
       if (data.today && data.today.length > 0) {
         todayHtml = `
           <div class="status-section recent-activity">
             <h3>📅 Today</h3>
-            ${data.today.map(item => 
+            ${data.today.map(item =>
               `<div class="activity-item">
                 <span class="activity-text">${item.text}</span>
               </div>`
@@ -2871,14 +2885,14 @@
           </div>
         `;
       }
-      
+
       // Pending section
       let pendingHtml = '';
       if (data.pending && data.pending.length > 0) {
         pendingHtml = `
           <div class="status-section recent-activity">
             <h3>Pending Tasks</h3>
-            ${data.pending.map(item => 
+            ${data.pending.map(item =>
               `<div class="activity-item">
                 <span class="activity-time">${item.done ? '✅' : '⏳'}</span>
                 <span class="activity-text">${item.text}</span>
@@ -2894,7 +2908,7 @@
           </div>
         `;
       }
-      
+
       statusPane.innerHTML = `
         <div class="status-section">
           <h3>Current Status</h3>
@@ -2917,14 +2931,14 @@
             </div>
           </div>
         </div>
-        
+
         ${todayHtml}
         ${pendingHtml}
-        
+
         <div class="agent-quote">"${quote}"</div>
       `;
     }
-    
+
     // Click on agent to open panel
     agents.forEach(agent => {
       agent.addEventListener('click', async () => {
@@ -2932,45 +2946,45 @@
         if (selectedAgent) {
           selectedAgent.classList.remove('selected');
         }
-        
+
         // Select new
         agent.classList.add('selected');
         selectedAgent = agent;
-        
+
         // Update panel
         const name = agent.dataset.name;
         const role = agent.dataset.role;
         const emoji = agent.dataset.emoji;
         const quote = agent.dataset.quote;
         const agentKey = agent.classList[1]; // e.g., 'marcus'
-        
+
         document.getElementById('panelAvatar').textContent = emoji;
         document.getElementById('panelName').textContent = name;
         document.getElementById('panelRole').textContent = role;
-        
+
         // Update WebSocket status indicator
         document.getElementById('wsStatus').textContent = gwConnected ? 'Live' : 'Connecting...';
         document.getElementById('wsStatus').style.color = gwConnected ? '#22c55e' : '#f59e0b';
-        
+
         // Load live chat for this agent
         loadAgentChat(agentKey);
-        
+
         // Show panel immediately
         sidePanel.classList.remove('hidden');
-        
+
         // Reset to chat tab
         tabs.forEach(t => t.classList.remove('active'));
         document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
         tabs[0].classList.add('active');
         document.getElementById('tab-chat').classList.add('active');
-        
+
         // Fetch and render memory data (async)
         const memoryData = await fetchAgentMemory(agentKey);
         renderMemorySection(memoryData, agentKey, quote);
         renderStatusSection(memoryData, quote);
       });
     });
-    
+
     // Close panel
     panelClose.addEventListener('click', () => {
       sidePanel.classList.add('hidden');
@@ -2983,21 +2997,21 @@
         panelOverlay.classList.remove('active');
       }
     });
-    
+
     // Tab switching
     tabs.forEach(tab => {
       tab.addEventListener('click', () => {
         tabs.forEach(t => t.classList.remove('active'));
         document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
-        
+
         tab.classList.add('active');
         document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
       });
     });
-    
+
     // --- Chat System (WebSocket-based) ---
     let currentAgentKey = null;
-    
+
     // Load drafts from localStorage on startup
     let messageDrafts = {};
     try {
@@ -3007,30 +3021,30 @@
       console.error('Failed to load drafts:', e);
     }
     let chatMessagesCache = [];
-    
+
     // Per-agent streaming state
     const agentStreamingState = new Map(); // agentKey -> { el, text }
-    
+
     // Track unread messages per agent
     const unreadMessages = new Map(); // agentKey -> count
-    
+
     // Mark agent as having unread messages
     function markUnread(agentKey) {
       if (agentKey === currentAgentKey) return; // Don't mark as unread if we're viewing it
-      
+
       const count = (unreadMessages.get(agentKey) || 0) + 1;
       unreadMessages.set(agentKey, count);
-      
+
       const agentEl = document.querySelector(`.agent.${agentKey}`);
       if (agentEl) {
         agentEl.classList.add('has-unread');
       }
     }
-    
+
     // Clear unread for an agent
     function clearUnread(agentKey) {
       unreadMessages.set(agentKey, 0);
-      
+
       const agentEl = document.querySelector(`.agent.${agentKey}`);
       if (agentEl) {
         agentEl.classList.remove('has-unread');
@@ -3068,14 +3082,14 @@
       }).join('');
 
       chatMessages.scrollTop = chatMessages.scrollHeight;
-      
+
       // Render any charts that were inserted
       setTimeout(() => renderPendingCharts(), 50);
     }
 
     // Chart ID counter for unique chart containers
     let chartIdCounter = 0;
-    
+
     // Store chart configs to render after DOM insertion
     const pendingCharts = new Map();
 
@@ -3085,12 +3099,12 @@
       // Match code blocks that look like chart JSON
       const codeBlockPattern = /```(?:json|chart)?\s*\n?([\s\S]*?)```/g;
       let match;
-      
+
       while ((match = codeBlockPattern.exec(text)) !== null) {
         try {
           const jsonStr = match[1].trim();
           const data = JSON.parse(jsonStr);
-          
+
           // Check if it's a chart object
           if (data.type === 'chart' && data.chartType && data.data) {
             charts.push({
@@ -3103,7 +3117,7 @@
           // Not valid JSON or not a chart, skip
         }
       }
-      
+
       return charts;
     }
 
@@ -3111,7 +3125,7 @@
     function renderChart(chartData) {
       const chartId = `chart-${++chartIdCounter}`;
       const { chartType, title, data, options = {} } = chartData;
-      
+
       // Build ApexCharts options based on chart type
       let apexOptions = {
         chart: {
@@ -3177,7 +3191,7 @@
             }
           }
         };
-        
+
         // Add goal line if specified
         if (options.goal) {
           apexOptions.annotations = {
@@ -3195,7 +3209,7 @@
             }]
           };
         }
-        
+
         apexOptions.stroke = {
           curve: 'smooth',
           width: 2
@@ -3237,7 +3251,7 @@
 
       // Store chart config for later rendering
       pendingCharts.set(chartId, apexOptions);
-      
+
       // Return HTML for chart container (no script tag)
       const titleHtml = title ? `<div class="chart-title">${escapeHtml(title)}</div>` : '';
       return `
@@ -3247,31 +3261,31 @@
         </div>
       `;
     }
-    
+
     // Render all pending charts after DOM insertion
     function renderPendingCharts() {
       if (typeof ApexCharts === 'undefined') {
         console.error('[CHART] ApexCharts not loaded!');
         return;
       }
-      
+
       // Find all chart containers waiting to be rendered
       const pending = document.querySelectorAll('[data-chart-pending="true"]');
       console.log('[CHART] Rendering', pending.length, 'pending chart(s)');
-      
+
       pending.forEach(container => {
         const chartId = container.id;
         const options = pendingCharts.get(chartId);
-        
+
         if (options) {
           console.log('[CHART] Rendering chart:', chartId);
           // Remove the pending flag
           container.removeAttribute('data-chart-pending');
-          
+
           // Render the chart
           const chart = new ApexCharts(container, options);
           chart.render();
-          
+
           // Clean up
           pendingCharts.delete(chartId);
         }
@@ -3281,10 +3295,10 @@
     // Format markdown for messages (with chart support)
     function formatMarkdown(text) {
       if (!text) return '';
-      
+
       // Extract any chart data first
       const charts = extractChartData(text);
-      
+
       // Replace charts with placeholders before markdown processing
       let processedText = text;
       const chartPlaceholders = [];
@@ -3297,7 +3311,7 @@
           processedText = processedText.replace(chart.raw, placeholder);
         });
       }
-      
+
       // Process markdown
       let html;
       if (typeof marked === 'undefined') {
@@ -3320,7 +3334,7 @@
         });
         html = marked.parse(processedText);
       }
-      
+
       // Replace placeholders with actual chart HTML
       if (chartPlaceholders.length > 0) {
         console.log('[CHART] Replacing', chartPlaceholders.length, 'placeholder(s)');
@@ -3332,7 +3346,7 @@
           console.log('[CHART] Placeholder', idx, '- found:', beforeCount, 'replaced:', beforeCount - afterCount);
         });
       }
-      
+
       return html;
     }
 
@@ -3386,19 +3400,19 @@
           <div class="bubble-text streaming-text"><span class="typing-indicator">Thinking...</span></div>
           <div class="bubble-time">${ts}</div>
         </div>`;
-      
+
       // Only append if we're viewing this agent
       if (currentAgentKey === agentKey) {
         chatMessages.appendChild(el);
         chatMessages.scrollTop = chatMessages.scrollHeight;
       }
-      
+
       state.el = el;
       state.text = '';
       return el;
     }
 
-    // Update streaming text — each delta is the full accumulated text, not a diff
+    // Update streaming text - each delta is the full accumulated text, not a diff
     function updateStreamingText(agentKey, text) {
       const state = getStreamingState(agentKey);
       state.text = text;
@@ -3409,7 +3423,7 @@
         // Render any charts that were inserted
         setTimeout(() => renderPendingCharts(), 50);
       }
-      
+
       // Only scroll if we're viewing this agent
       if (currentAgentKey === agentKey) {
         chatMessages.scrollTop = chatMessages.scrollHeight;
@@ -3447,32 +3461,32 @@
         console.error('Failed to save drafts:', e);
       }
     }
-    
+
     // Load draft message for agent
     function loadDraftForAgent(agentKey) {
       chatInput.value = messageDrafts[agentKey] || '';
       autoResizeTextarea(); // Resize to fit draft content
     }
-    
+
     // Load chat for an agent
     async function loadAgentChat(agentKey) {
       console.log('[LOAD] loadAgentChat called for:', agentKey);
       console.trace('[LOAD] Called from:');
-      
+
       // Prevent reloading if we're already viewing this agent
       if (currentAgentKey === agentKey) {
         console.log('[LOAD] Already viewing this agent, skipping reload');
         return;
       }
-      
+
       // Save draft for previous agent
       saveDraftForCurrentAgent();
-      
+
       currentAgentKey = agentKey;
-      
+
       // Load draft for new agent
       loadDraftForAgent(agentKey);
-      
+
       // Clear unread badge for this agent
       clearUnread(agentKey);
 
@@ -3519,7 +3533,7 @@
           console.log('[GW] History fetch failed:', e.message || e);
         }
       }
-      
+
       // If Gateway didn't load messages, try cache fallback
       if (chatMessagesCache.length === 0) {
         try {
@@ -3561,7 +3575,7 @@
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ content: state.text })
             }).catch(() => {});
-            
+
             // Mark as unread if we're not currently viewing this agent
             markUnread(agentKey);
           }
@@ -3578,9 +3592,9 @@
     function parseNaturalLanguage(text, currentAgent) {
       const lower = text.toLowerCase();
       const agentNames = ['isla', 'marcus', 'harper', 'eli', 'sage', 'dash', 'julie', 'remy', 'lena', 'val'];
-      
+
       console.log('[NL Parser] Checking:', text, 'Current agent:', currentAgent);
-      
+
       // Meeting/standup triggers
       if (lower.match(/\b(standup|stand[\s-]?up|daily|meeting|gather|conference)\b/)) {
         if (lower.match(/\b(everyone|all|team|agents)\b/) || lower.includes('time')) {
@@ -3589,14 +3603,14 @@
           return { handled: true, silent: false }; // Let agent respond too
         }
       }
-      
+
       // End meeting triggers
       if (lower.match(/\b(back to|return to|end|dismiss|done)\b/) && lower.match(/\b(desk|desks|meeting)\b/)) {
         showMovementNotification('✅ Meeting ended - everyone returning to desks');
         endMeeting();
         return { handled: true, silent: false };
       }
-      
+
       // Talk to / meet with / go see patterns
       const talkPatterns = [
         /\b(?:go\s+)?(?:talk|speak|chat|meet|ask)\s+(?:(?:to|with)\s+)?(\w+)/i,
@@ -3605,25 +3619,25 @@
         /\bcoordinate\s+with\s+(\w+)/i,
         /\bdiscuss\s+(?:this\s+)?(?:with\s+)?(\w+)/i,
       ];
-      
+
       for (const pattern of talkPatterns) {
         const match = text.match(pattern);
         if (match) {
           console.log('[NL Parser] Pattern matched:', pattern, 'Target:', match[1]);
           const targetAgent = match[1].toLowerCase();
           console.log('[NL Parser] Target agent:', targetAgent, 'Current:', currentAgent, 'Valid:', agentNames.includes(targetAgent));
-          
+
           if (agentNames.includes(targetAgent) && targetAgent !== currentAgent) {
             console.log('[NL Parser] ✅ Movement triggered!');
             // Show notification
             const currentName = currentAgent.charAt(0).toUpperCase() + currentAgent.slice(1);
             const targetName = targetAgent.charAt(0).toUpperCase() + targetAgent.slice(1);
             showMovementNotification(`${currentName} is walking over to ${targetName}...`);
-            
+
             // Move current agent to target agent IMMEDIATELY (not delayed)
             console.log('[NL Parser] Calling moveForChat now...');
             moveForChat(currentAgent, targetAgent);
-            
+
             // Return to desk after 8 seconds
             setTimeout(() => {
               console.log('[NL Parser] Returning to desk...');
@@ -3636,25 +3650,25 @@
           }
         }
       }
-      
+
       return { handled: false, silent: false };
     }
-    
+
     // Check for special commands
     function handleSpecialCommands(text) {
       const cmd = text.toLowerCase().trim();
-      
+
       // Meeting commands
       if (cmd === '/standup' || cmd === '/meeting') {
         startMeeting('standup');
         return { handled: true, response: '📅 Starting standup - everyone to the conference room!' };
       }
-      
+
       if (cmd === '/endmeeting' || cmd === '/desks') {
         endMeeting();
         return { handled: true, response: '✅ Meeting ended - back to your desks!' };
       }
-      
+
       // Manual interaction trigger (for testing)
       const interactionMatch = cmd.match(/^\/talk\s+(\w+)\s+(\w+)$/);
       if (interactionMatch) {
@@ -3662,7 +3676,7 @@
         moveForChat(agentA, agentB);
         return { handled: true, response: `💬 ${agentA} is talking with ${agentB}` };
       }
-      
+
       // Return to desk command
       const deskMatch = cmd.match(/^\/desk\s+(\w+)$/);
       if (deskMatch) {
@@ -3670,11 +3684,11 @@
         returnToDesk(agent);
         return { handled: true, response: `🚶 ${agent} returned to their desk` };
       }
-      
+
       // Help command
       if (cmd === '/help' || cmd === '/commands') {
-        return { 
-          handled: true, 
+        return {
+          handled: true,
           response: `**Office Controls:**
 
 **Natural Language:**
@@ -3688,23 +3702,23 @@
 /standup - Start a meeting
 /endmeeting - End meeting
 /talk [agent1] [agent2] - Make agents chat
-/desk [agent] - Send agent to desk` 
+/desk [agent] - Send agent to desk`
         };
       }
-      
+
       return { handled: false };
     }
-    
+
     // Send message via Gateway WebSocket
     async function sendMessage() {
       const text = chatInput.value.trim();
       if (!text || !currentAgentKey) return;
-      
+
       console.log('[SEND] Sending message:', text.substring(0, 50));
 
       // Check for natural language movement triggers
       const nlResult = parseNaturalLanguage(text, currentAgentKey);
-      
+
       // Check for special slash commands
       const cmdResult = handleSpecialCommands(text);
       if (cmdResult.handled) {
@@ -3724,14 +3738,14 @@
       // Clear input immediately (but don't disable it)
       chatInput.value = '';
       chatInput.style.height = 'auto'; // Reset height after sending
-      
+
       // Clear draft for this agent
       delete messageDrafts[currentAgentKey];
 
       // Show user message immediately
       appendUserMessage(text);
 
-      // Save to server cache (for cross-device sync) — cache only, no gateway send
+      // Save to server cache (for cross-device sync) - cache only, no gateway send
       fetch(`${API_BASE}/chat/${currentAgentKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -3769,11 +3783,11 @@
         chatMessages.appendChild(errEl);
         gwConnect();
       }
-      
+
       // Keep input focused for quick follow-ups
       chatInput.focus();
     }
-    
+
     // Disabled polling - messages show via streaming, no need for polling refresh
     // (Polling was causing duplicates by re-rendering messages already shown via WebSocket)
 
@@ -3782,21 +3796,21 @@
       chatInput.style.height = 'auto';
       chatInput.style.height = Math.min(chatInput.scrollHeight, 200) + 'px';
     }
-    
+
     // Debounced draft save
     let draftSaveTimer = null;
     function onInputChange() {
       autoResizeTextarea();
-      
+
       // Debounce draft saving (save 500ms after user stops typing)
       clearTimeout(draftSaveTimer);
       draftSaveTimer = setTimeout(() => {
         saveDraftForCurrentAgent();
       }, 500);
     }
-    
+
     chatInput.addEventListener('input', onInputChange);
-    
+
     chatSend.addEventListener('click', sendMessage);
     chatInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {
@@ -3809,23 +3823,23 @@
     const mobileMenuBtn = document.getElementById('mobileMenuBtn');
     const leftInfoPanel = document.querySelector('.left-info-panel');
     const panelOverlay = document.getElementById('panelOverlay');
-    
+
     // Initialize panel as hidden on mobile and ensure overlay is not active
     if (window.innerWidth <= 768) {
       leftInfoPanel.classList.add('mobile-hidden');
       leftInfoPanel.classList.remove('mobile-visible');
       panelOverlay.classList.remove('active'); // Ensure overlay is hidden on load
     }
-    
+
     // Toggle left panel on mobile
     if (mobileMenuBtn) {
       mobileMenuBtn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
         console.log('Hamburger menu clicked');
-        
+
         const isVisible = leftInfoPanel.classList.contains('mobile-visible');
-        
+
         if (isVisible) {
           leftInfoPanel.classList.remove('mobile-visible');
           leftInfoPanel.classList.add('mobile-hidden');
@@ -3837,7 +3851,7 @@
         }
       });
     }
-    
+
     // Close panels when clicking overlay
     if (panelOverlay) {
       panelOverlay.addEventListener('click', () => {
@@ -3857,31 +3871,31 @@
         panelOverlay.classList.remove('active');
       });
     }
-    
+
     // --- Mobile Bottom Navigation ---
     const mobileBottomNav = document.getElementById('mobileBottomNav');
     const mobileNavItems = document.querySelectorAll('.mobile-nav-item');
-    
+
     // Handle mobile nav clicks
     mobileNavItems.forEach(navItem => {
       navItem.addEventListener('click', () => {
         const agentKey = navItem.dataset.agent;
-        
+
         // Find the corresponding agent element
         const agent = document.querySelector(`.agent.${agentKey}`);
         if (agent) {
           agent.click(); // Trigger existing click handler
         }
-        
+
         // Update active state
         mobileNavItems.forEach(item => item.classList.remove('active'));
         navItem.classList.add('active');
-        
+
         // Show side panel on mobile
         sidePanel.classList.remove('hidden');
       });
     });
-    
+
     // Update mobile nav active state when agent changes
     function updateMobileNavActive(agentKey) {
       mobileNavItems.forEach(item => {
@@ -3892,7 +3906,7 @@
         }
       });
     }
-    
+
     // Override agent click to show overlay on mobile
     const originalAgentClick = agents.forEach;
     agents.forEach(agent => {
@@ -3901,7 +3915,7 @@
         // Update mobile nav when agent clicked from office view
         const agentKey = agent.classList[1];
         updateMobileNavActive(agentKey);
-        
+
         // Show overlay on tablet (not on mobile since chat is primary interface there)
         if (window.innerWidth > 768 && window.innerWidth <= 1200) {
           panelOverlay.classList.add('active');
@@ -3933,7 +3947,7 @@
 
     document.addEventListener('mousemove', (e) => {
       if (!isResizing) return;
-      
+
       const deltaX = startX - e.clientX; // Dragging left increases width
       const newWidth = Math.max(300, Math.min(800, startWidth + deltaX));
       sidePanel.style.width = newWidth + 'px';
@@ -3945,12 +3959,12 @@
         resizeHandle.classList.remove('dragging');
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
-        
+
         // Save width to localStorage
         localStorage.setItem('sidePanelWidth', sidePanel.offsetWidth);
       }
     });
-    
+
     // --- Mobile: Auto-open Isla's chat on load ---
     if (window.innerWidth <= 768) {
       // On mobile, open Isla's chat by default
