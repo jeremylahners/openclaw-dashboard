@@ -836,17 +836,25 @@
     .bubble-text h2 { font-size: 1.02em; }
 
     .bubble-text p {
-      margin: 4px 0;
-      font-size: inherit; /* Ensure paragraphs match parent size */
+      margin: 2px 0;
+      font-size: inherit !important;
+    }
+    
+    .bubble-text p:first-child {
+      margin-top: 0;
+    }
+    
+    .bubble-text p:last-child {
+      margin-bottom: 0;
     }
 
     .bubble-text ul, .bubble-text ol {
-      margin: 4px 0;
-      padding-left: 20px;
+      margin: 2px 0;
+      padding-left: 16px;
     }
 
     .bubble-text li {
-      margin: 2px 0;
+      margin: 1px 0;
     }
 
     .bubble-text blockquote {
