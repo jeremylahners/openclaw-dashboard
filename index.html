@@ -3583,6 +3583,7 @@
 
       state.el = el;
       state.text = '';
+      state.finalized = false; // Reset finalized flag for new streaming
       return el;
     }
 
@@ -3608,17 +3609,18 @@
     function finalizeStreaming(agentKey) {
       const state = getStreamingState(agentKey);
       if (state.el) {
-        const textEl = state.el.querySelector('.streaming-text');
-        if (textEl && state.text) {
-          textEl.innerHTML = formatMarkdown(state.text);
-          // Render any charts that were inserted
-          setTimeout(() => renderPendingCharts(), 50);
-        } else if (textEl && !state.text) {
-          textEl.innerHTML = '<span style="color: #888; font-style: italic;">No response</span>';
-        }
+        // Remove the streaming div - the message is now in chatMessagesCache
+        // and will be rendered properly by renderChatMessages or poll
+        state.el.remove();
       }
       state.el = null;
       state.text = '';
+      state.finalized = false;
+      
+      // Re-render from cache to show the proper message bubble
+      if (chatMessagesCache.length > 0) {
+        renderChatMessages(chatMessagesCache);
+      }
     }
 
     // Save draft message for current agent
@@ -3743,7 +3745,9 @@
         onFinal: (payload) => {
           // Save final agent response to server cache
           const state = getStreamingState(agentKey);
-          if (state.text) {
+          if (state.text && !state.finalized) {
+            state.finalized = true; // Prevent double processing
+            
             // Add to local cache to prevent poll from re-adding
             const agentMessage = {
               id: `agent-${Date.now()}`,
