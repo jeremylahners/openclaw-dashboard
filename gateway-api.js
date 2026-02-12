@@ -416,6 +416,21 @@ const server = http.createServer(async (req, res) => {
           return;
         }
         
+        // Dedupe: Check if same content was added in last 5 seconds
+        const messages = getMessages(agentKey);
+        const fiveSecondsAgo = Date.now() - 5000;
+        const recentDupe = messages.find(m => 
+          m.isBot && 
+          m.timestamp > fiveSecondsAgo && 
+          m.content === content
+        );
+        
+        if (recentDupe) {
+          console.log(`⏭️ Skipping duplicate agent reply for ${agentKey}`);
+          res.end(JSON.stringify({ ok: true, message: 'Duplicate skipped' }));
+          return;
+        }
+        
         // Store agent response in cache
         const agentMessage = {
           id: `agent-${Date.now()}`,
