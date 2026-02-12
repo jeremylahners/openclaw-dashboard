@@ -28,7 +28,8 @@ const agentSessions = {
   dash: "agent:dash:webchat:user",
   remy: "agent:remy:webchat:user",
   lena: "agent:lena:webchat:user",
-  val: "agent:val:webchat:user"
+  val: "agent:val:webchat:user",
+  atlas: "agent:atlas:webchat:user"
 };
 
 // Agent channel names for display
@@ -42,7 +43,8 @@ const agentChannels = {
   dash: { name: "#dash" },
   remy: { name: "#chef" },
   lena: { name: "#gym" },
-  val: { name: "#finance" }
+  val: { name: "#finance" },
+  atlas: { name: "#travel" }
 };
 
 // Call Gateway API

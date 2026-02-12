@@ -3764,8 +3764,10 @@
         onFinal: (payload) => {
           // Save final agent response to server cache
           const state = getStreamingState(agentKey);
+          console.log('[FINAL] onFinal called for:', agentKey, 'text length:', state.text?.length || 0, 'finalized:', state.finalized);
           if (state.text && !state.finalized) {
             state.finalized = true; // Prevent double processing
+            console.log('[FINAL] Saving agent reply for:', agentKey);
             
             // Add to local cache to prevent poll from re-adding
             const agentMessage = {
@@ -3783,7 +3785,10 @@
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ content: state.text })
-            }).catch(() => {});
+            }).then(r => {
+              if (!r.ok) console.error('[SAVE] Failed to cache agent reply:', r.status);
+              else console.log('[SAVE] Agent reply cached for:', agentKey);
+            }).catch(e => console.error('[SAVE] Error caching agent reply:', e));
 
             // Mark as unread if we're not currently viewing this agent
             markUnread(agentKey);
