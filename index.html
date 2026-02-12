@@ -747,10 +747,19 @@
     .bubble-text {
       padding: 10px 14px;
       border-radius: 16px;
-      font-size: 0.9rem;
+      font-size: 0.9rem !important;
       line-height: 1.4;
       word-wrap: break-word;
       white-space: pre-wrap;
+    }
+    
+    .bubble-text * {
+      font-size: inherit !important;
+      line-height: inherit;
+    }
+    
+    .bubble-text code, .bubble-text pre code {
+      font-size: 0.85em !important;
     }
 
     .message-bubble.them .bubble-text {
