@@ -1522,6 +1522,128 @@
       font-size: 0.75rem;
     }
 
+    /* Enhanced Standup Cards */
+    .standup-card {
+      background: #1a1a1a;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 10px;
+      border: 1px solid #333;
+    }
+
+    .standup-card.has-blockers {
+      border-color: #dc2626;
+      border-left: 3px solid #dc2626;
+    }
+
+    .standup-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .standup-header .agent-emoji {
+      font-size: 1.2rem;
+    }
+
+    .standup-header .agent-name {
+      font-weight: 600;
+      color: #8b5cf6;
+      font-size: 0.9rem;
+    }
+
+    .standup-header .agent-role {
+      color: #666;
+      font-size: 0.75rem;
+    }
+
+    .standup-items {
+      padding-left: 4px;
+    }
+
+    .standup-item-line {
+      display: flex;
+      gap: 8px;
+      padding: 3px 0;
+      font-size: 0.8rem;
+      line-height: 1.4;
+    }
+
+    .standup-item-line .status-icon {
+      flex-shrink: 0;
+      width: 18px;
+    }
+
+    .standup-item-line .item-text {
+      color: #ccc;
+    }
+
+    .standup-item-line.done .item-text {
+      color: #4ade80;
+    }
+
+    .standup-item-line.progress .item-text {
+      color: #60a5fa;
+    }
+
+    .standup-item-line.waiting .item-text {
+      color: #facc15;
+    }
+
+    .standup-item-line.blocked .item-text {
+      color: #f87171;
+    }
+
+    .standup-learned {
+      display: flex;
+      gap: 8px;
+      padding: 6px 0 2px;
+      font-size: 0.75rem;
+      color: #a78bfa;
+      border-top: 1px solid #333;
+      margin-top: 6px;
+    }
+
+    .standup-learned .learned-icon {
+      flex-shrink: 0;
+    }
+
+    .standup-blockers {
+      margin-top: 6px;
+      padding-top: 6px;
+      border-top: 1px solid #dc2626;
+    }
+
+    .blocker-item {
+      font-size: 0.75rem;
+      color: #f87171;
+      padding: 2px 0;
+    }
+
+    .standup-cross-team {
+      background: #1e1b4b;
+      border-radius: 8px;
+      padding: 12px;
+      margin-top: 12px;
+      border: 1px solid #4c1d95;
+    }
+
+    .cross-team-header {
+      font-weight: 600;
+      color: #a78bfa;
+      margin-bottom: 8px;
+      font-size: 0.85rem;
+    }
+
+    .cross-team-item {
+      font-size: 0.8rem;
+      color: #c4b5fd;
+      padding: 4px 0;
+      line-height: 1.4;
+    }
+
+    /* Legacy standup item (kept for compatibility) */
     .standup-item {
       font-size: 0.8rem;
       color: #aaa;
@@ -1543,7 +1665,7 @@
       color: #ccc;
     }
 
-    /* Expanded standup items for tab view */
+    /* Expanded standup items for tab view - deprecated */
     .standup-item-expanded {
       padding: 10px 0;
       border-bottom: 1px solid #222;
@@ -2425,7 +2547,7 @@
       const dateEl = document.getElementById('standupDate');
 
       if (data.date) {
-        dateEl.textContent = `${data.date}`;
+        dateEl.textContent = `${data.date}${data.time ? ' @ ' + data.time : ''}`;
       }
 
       if (!data.updates || data.updates.length === 0) {
@@ -2434,17 +2556,76 @@
       }
 
       let html = '';
+      
+      // Render each agent's update
       data.updates.forEach(update => {
+        const hasBlockers = update.blockers && update.blockers.length > 0;
+        
         html += `
-          <div class="standup-item-expanded">
-            <div class="standup-agent">
+          <div class="standup-card ${hasBlockers ? 'has-blockers' : ''}">
+            <div class="standup-header">
               <span class="agent-emoji">${update.emoji}</span>
               <span class="agent-name">${update.name}</span>
+              <span class="agent-role">(${update.role})</span>
             </div>
-            <div class="standup-status">${escapeHtml(update.status)}</div>
+            <div class="standup-items">
+        `;
+        
+        // Render work items
+        if (update.items && update.items.length > 0) {
+          update.items.forEach(item => {
+            const statusClass = {
+              '✅': 'done',
+              '🔄': 'progress',
+              '⏳': 'waiting',
+              '⚠️': 'blocked'
+            }[item.status] || 'progress';
+            
+            html += `
+              <div class="standup-item-line ${statusClass}">
+                <span class="status-icon">${item.status}</span>
+                <span class="item-text">${escapeHtml(item.text)}</span>
+              </div>
+            `;
+          });
+        }
+        
+        // Render learned insight
+        if (update.learned) {
+          html += `
+            <div class="standup-learned">
+              <span class="learned-icon">📚</span>
+              <span class="learned-text">${escapeHtml(update.learned)}</span>
+            </div>
+          `;
+        }
+        
+        // Render blockers
+        if (hasBlockers) {
+          html += `<div class="standup-blockers">`;
+          update.blockers.forEach(blocker => {
+            html += `<div class="blocker-item">⛔ ${escapeHtml(blocker)}</div>`;
+          });
+          html += `</div>`;
+        }
+        
+        html += `
+            </div>
           </div>
         `;
       });
+      
+      // Render cross-team section if present
+      if (data.crossTeam && data.crossTeam.length > 0) {
+        html += `
+          <div class="standup-cross-team">
+            <div class="cross-team-header">🔗 Cross-Team</div>
+        `;
+        data.crossTeam.forEach(item => {
+          html += `<div class="cross-team-item"><strong>${item.agent}:</strong> ${escapeHtml(item.text)}</div>`;
+        });
+        html += `</div>`;
+      }
 
       container.innerHTML = html;
     }
@@ -3781,8 +3962,7 @@
       chatInput.focus();
     }
 
-    // Disabled polling - messages show via streaming, no need for polling refresh
-    // (Polling was causing duplicates by re-rendering messages already shown via WebSocket)
+    // Chat sync polling is initialized later after loadAgentChat is defined
 
     // Auto-resize textarea as user types
     function autoResizeTextarea() {
@@ -3957,6 +4137,73 @@
         localStorage.setItem('sidePanelWidth', sidePanel.offsetWidth);
       }
     });
+
+    // --- Multi-Session Sync Polling ---
+    // Polls server cache to sync messages across devices/tabs
+    let chatPollInterval = null;
+    let lastMessageIds = new Set();
+
+    async function pollChatMessages() {
+      if (!currentAgentKey) return;
+      
+      try {
+        const response = await fetch(`${API_BASE}/chat/${currentAgentKey}`);
+        if (!response.ok) return;
+        
+        const data = await response.json();
+        if (!data.ok || !data.messages) return;
+        
+        const serverMessages = data.messages;
+        
+        // Build set of current message IDs
+        const serverIds = new Set(serverMessages.map(m => m.id));
+        
+        // Check if there are any new message IDs
+        let hasNewMessages = false;
+        for (const id of serverIds) {
+          if (!lastMessageIds.has(id)) {
+            hasNewMessages = true;
+            break;
+          }
+        }
+        
+        if (hasNewMessages || serverMessages.length !== lastMessageIds.size) {
+          // New messages detected - re-render chat
+          console.log(`[Sync] New messages detected, updating from ${lastMessageIds.size} to ${serverMessages.length}`);
+          chatMessagesCache = serverMessages;
+          renderChatMessages(serverMessages);
+          lastMessageIds = serverIds;
+        }
+      } catch (e) {
+        console.log('[Sync] Poll error:', e.message);
+      }
+    }
+
+    // Start chat polling (called when agent is selected)
+    function startChatPolling() {
+      if (chatPollInterval) clearInterval(chatPollInterval);
+      // Initialize with current message IDs
+      lastMessageIds = new Set(chatMessagesCache.map(m => m.id));
+      // Poll every 3 seconds for cross-device sync
+      chatPollInterval = setInterval(pollChatMessages, 3000);
+      console.log('[Sync] Chat polling started');
+    }
+
+    // Stop chat polling
+    function stopChatPolling() {
+      if (chatPollInterval) {
+        clearInterval(chatPollInterval);
+        chatPollInterval = null;
+        console.log('[Sync] Chat polling stopped');
+      }
+    }
+
+    // Wrap loadAgentChat to start polling after agent loads
+    const _originalLoadAgentChat = loadAgentChat;
+    loadAgentChat = async function(agentKey) {
+      await _originalLoadAgentChat(agentKey);
+      startChatPolling();
+    };
 
     // --- Mobile: Auto-open Isla's chat on load ---
     if (window.innerWidth <= 768) {
