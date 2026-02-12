@@ -3744,6 +3744,18 @@
           // Save final agent response to server cache
           const state = getStreamingState(agentKey);
           if (state.text) {
+            // Add to local cache to prevent poll from re-adding
+            const agentMessage = {
+              id: `agent-${Date.now()}`,
+              content: state.text,
+              author: agentKey.charAt(0).toUpperCase() + agentKey.slice(1),
+              authorId: agentKey,
+              isBot: true,
+              timestamp: Date.now(),
+              timestampFormatted: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+            };
+            chatMessagesCache.push(agentMessage);
+            
             fetch(`${API_BASE}/messages/${agentKey}/agent-reply`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -3918,6 +3930,18 @@
 
       // Show user message immediately
       appendUserMessage(text);
+
+      // Add to local cache to prevent poll from re-adding
+      const userMessage = {
+        id: `user-${Date.now()}`,
+        content: text,
+        author: 'Jeremy',
+        authorId: 'user',
+        isBot: false,
+        timestamp: Date.now(),
+        timestampFormatted: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+      };
+      chatMessagesCache.push(userMessage);
 
       // Save to server cache (for cross-device sync) - cache only, no gateway send
       fetch(`${API_BASE}/chat/${currentAgentKey}`, {
@@ -4155,24 +4179,28 @@
         
         const serverMessages = data.messages;
         
-        // Build set of current message IDs
-        const serverIds = new Set(serverMessages.map(m => m.id));
+        // Compare by content fingerprint to detect true new messages
+        // (avoids duplicates from Gateway vs server cache having different IDs)
+        const getFingerprint = (m) => `${m.isBot ? 'bot' : 'user'}:${(m.content || '').substring(0, 100)}`;
         
-        // Check if there are any new message IDs
-        let hasNewMessages = false;
-        for (const id of serverIds) {
-          if (!lastMessageIds.has(id)) {
-            hasNewMessages = true;
+        const currentFingerprints = new Set(chatMessagesCache.map(getFingerprint));
+        const serverFingerprints = serverMessages.map(getFingerprint);
+        
+        // Check if server has messages we don't have (by content, not ID)
+        let hasNewContent = false;
+        for (const fp of serverFingerprints) {
+          if (!currentFingerprints.has(fp)) {
+            hasNewContent = true;
             break;
           }
         }
         
-        if (hasNewMessages || serverMessages.length !== lastMessageIds.size) {
-          // New messages detected - re-render chat
-          console.log(`[Sync] New messages detected, updating from ${lastMessageIds.size} to ${serverMessages.length}`);
+        // Only re-render if there's genuinely new content
+        if (hasNewContent) {
+          console.log(`[Sync] New content detected, updating chat`);
           chatMessagesCache = serverMessages;
           renderChatMessages(serverMessages);
-          lastMessageIds = serverIds;
+          lastMessageIds = new Set(serverMessages.map(m => m.id));
         }
       } catch (e) {
         console.log('[Sync] Poll error:', e.message);
