@@ -4229,8 +4229,9 @@
           }
         }
         
-        // Only re-render if there's genuinely new content
-        if (hasNewContent) {
+        // Only re-render if server has genuinely NEW content we don't have
+        // Don't overwrite if we have more messages than server (e.g., Gateway history has more)
+        if (hasNewContent && serverMessages.length >= chatMessagesCache.length) {
           console.log(`[Sync] New content detected, updating chat`);
           chatMessagesCache = serverMessages;
           renderChatMessages(serverMessages);
