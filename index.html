@@ -816,20 +816,19 @@
 
     .bubble-text h1, .bubble-text h2, .bubble-text h3,
     .bubble-text h4, .bubble-text h5, .bubble-text h6 {
-      font-weight: 700;
-      margin: 8px 0 4px 0;
+      font-weight: 600;
+      margin: 6px 0 3px 0;
       line-height: 1.3;
+      font-size: 1em; /* Keep headers same size as body text */
     }
 
-    .bubble-text h1 { font-size: 1.4em; }
-    .bubble-text h2 { font-size: 1.3em; }
-    .bubble-text h3 { font-size: 1.2em; }
-    .bubble-text h4 { font-size: 1.1em; }
-    .bubble-text h5 { font-size: 1em; }
-    .bubble-text h6 { font-size: 0.95em; }
+    /* Subtle size increase only for h1/h2 */
+    .bubble-text h1 { font-size: 1.05em; }
+    .bubble-text h2 { font-size: 1.02em; }
 
     .bubble-text p {
       margin: 4px 0;
+      font-size: inherit; /* Ensure paragraphs match parent size */
     }
 
     .bubble-text ul, .bubble-text ol {
