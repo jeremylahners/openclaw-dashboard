@@ -3931,6 +3931,7 @@
         chatInput.value = '';
         chatInput.style.height = 'auto'; // Reset height
         delete messageDrafts[currentAgentKey]; // Clear draft
+        localStorage.setItem('messageDrafts', JSON.stringify(messageDrafts)); // Persist clear
         // Show system message
         const sysEl = document.createElement('div');
         sysEl.style.cssText = 'text-align: center; padding: 12px; margin: 8px 0; background: rgba(14, 165, 233, 0.1); border-radius: 8px; font-size: 0.85rem;';
@@ -3945,8 +3946,9 @@
       chatInput.value = '';
       chatInput.style.height = 'auto'; // Reset height after sending
 
-      // Clear draft for this agent
+      // Clear draft for this agent and persist to localStorage
       delete messageDrafts[currentAgentKey];
+      localStorage.setItem('messageDrafts', JSON.stringify(messageDrafts));
 
       // Show user message immediately
       appendUserMessage(text);
