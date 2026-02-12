@@ -1,0 +1,21 @@
+# Sensitive data
+messages.json
+config.js
+action-items.json
+
+# User data folders
+tax-docs-2025/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Dependencies
+node_modules/
+
+# Old/backup files
+.old/
+
+# OS
+.DS_Store
+Thumbs.db
