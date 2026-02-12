@@ -3930,6 +3930,7 @@
       if (cmdResult.handled) {
         chatInput.value = '';
         chatInput.style.height = 'auto'; // Reset height
+        clearTimeout(draftSaveTimer); // Cancel pending draft save
         delete messageDrafts[currentAgentKey]; // Clear draft
         localStorage.setItem('messageDrafts', JSON.stringify(messageDrafts)); // Persist clear
         // Show system message
@@ -3946,6 +3947,9 @@
       chatInput.value = '';
       chatInput.style.height = 'auto'; // Reset height after sending
 
+      // Cancel any pending draft save timer
+      clearTimeout(draftSaveTimer);
+      
       // Clear draft for this agent and persist to localStorage
       delete messageDrafts[currentAgentKey];
       localStorage.setItem('messageDrafts', JSON.stringify(messageDrafts));
