@@ -2756,12 +2756,8 @@
       }
     }
 
-    // Wrap loadAgentChat to start polling after agent loads
-    const _originalLoadAgentChat = loadAgentChat;
-    loadAgentChat = async function(agentKey) {
-      await _originalLoadAgentChat(agentKey);
-      startChatPolling();
-    };
+    // Note: startChatPolling() is now called at the end of loadAgentChat itself
+    // to ensure it only starts AFTER the generation check passes and all setup is complete
 
     // --- Mobile: Auto-open Isla's chat on load ---
     if (window.innerWidth <= 768) {
