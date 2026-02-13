@@ -21,7 +21,7 @@
   
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/apexcharts@3.45.1/dist/apexcharts.min.js"></script>
-  <link rel="stylesheet" href="css/all-styles.css?v=7">
+  <link rel="stylesheet" href="css/all-styles.css?v=8">
   <link rel="stylesheet" href="css/toast.css?v=3">
   <link rel="stylesheet" href="css/loading.css?v=3">
 </head>
@@ -2066,7 +2066,6 @@
     // Load chat for an agent
     async function loadAgentChat(agentKey) {
       console.log('[LOAD] loadAgentChat called for:', agentKey);
-      console.trace('[LOAD] Called from:');
 
       // Prevent reloading if we're already viewing this agent
       if (currentAgentKey === agentKey) {
@@ -2074,10 +2073,21 @@
         return;
       }
 
+      // CRITICAL: Increment generation counter FIRST to invalidate ALL in-flight async operations
+      const thisGeneration = ++chatLoadGeneration;
+      console.log('[LOAD] Starting load generation:', thisGeneration, 'for agent:', agentKey);
+
       // CRITICAL: Stop polling IMMEDIATELY to prevent race conditions
       stopChatPolling();
 
-      // Save draft for previous agent
+      // Clear old agent's WebSocket callbacks to prevent stale updates
+      if (currentAgentKey) {
+        const oldSessionKey = agentSessionKey(currentAgentKey);
+        gwChatCallbacks.delete(oldSessionKey);
+        console.log('[LOAD] Cleared callback for previous agent:', currentAgentKey);
+      }
+
+      // Save draft for previous agent BEFORE changing currentAgentKey
       saveDraftForCurrentAgent();
 
       currentAgentKey = agentKey;
@@ -2110,8 +2120,9 @@
           gatewayLoaded = true; // Mark that Gateway responded (even if empty)
           
           // RACE CONDITION FIX: Check if user switched agents while we were waiting
-          if (currentAgentKey !== agentKey) {
-            console.log('[LOAD] Agent changed during Gateway request, discarding stale response for:', agentKey);
+          // Use generation counter for more robust check (handles rapid back-and-forth switching)
+          if (chatLoadGeneration !== thisGeneration) {
+            console.log('[LOAD] Generation mismatch after Gateway request (expected:', thisGeneration, 'current:', chatLoadGeneration, '), discarding');
             return; // Discard stale data - another loadAgentChat will handle the new agent
           }
           
@@ -2160,8 +2171,9 @@
           const data = await response.json();
           
           // RACE CONDITION FIX: Check if user switched agents while we were waiting
-          if (currentAgentKey !== agentKey) {
-            console.log('[LOAD] Agent changed during cache fetch, discarding stale response for:', agentKey);
+          // Use generation counter for more robust check
+          if (chatLoadGeneration !== thisGeneration) {
+            console.log('[LOAD] Generation mismatch after cache fetch, discarding stale response');
             return; // Discard stale data
           }
           
@@ -2173,11 +2185,17 @@
           }
         } catch (e) {
           console.log('Cache fetch failed:', e);
-          // Only show error if we're still viewing this agent
-          if (currentAgentKey === agentKey) {
+          // Only show error if we're still on the same generation
+          if (chatLoadGeneration === thisGeneration) {
             chatMessages.innerHTML = '<div style="text-align: center; color: #666; padding: 20px;">Start a conversation...</div>';
           }
         }
+      }
+
+      // Final staleness check before setting up streaming callbacks
+      if (chatLoadGeneration !== thisGeneration) {
+        console.log('[LOAD] Generation mismatch at end of load, not setting up callbacks');
+        return;
       }
 
       // If this agent has a pending streaming message, append it now
@@ -2190,15 +2208,35 @@
         }
       }
 
+      // RACE CONDITION FIX: Final staleness check before registering callbacks
+      // If user switched agents during async operations, don't proceed
+      if (currentAgentKey !== agentKey) {
+        console.log('[LOAD] Agent changed before callback registration, aborting for:', agentKey);
+        return;
+      }
+
       // Register streaming callback for this agent's session
+      // Capture generation to ensure callbacks don't fire for stale sessions
       const sessionKey = agentSessionKey(agentKey);
-      console.log('[CALLBACK] Registering callback for:', sessionKey);
-      console.log('[CALLBACK] Total callbacks registered:', gwChatCallbacks.size);
+      const callbackGeneration = thisGeneration;
+      console.log('[CALLBACK] Registering callback for:', sessionKey, 'generation:', callbackGeneration);
       gwChatCallbacks.set(sessionKey, {
         onDelta: (text, payload) => {
+          // Check generation before processing delta
+          if (chatLoadGeneration !== callbackGeneration) {
+            console.log('[CALLBACK] Ignoring stale delta for generation:', callbackGeneration);
+            return;
+          }
           updateStreamingText(agentKey, text);
         },
         onFinal: (payload) => {
+          // Check generation before processing final
+          if (chatLoadGeneration !== callbackGeneration) {
+            console.log('[FINAL] Ignoring stale final for generation:', callbackGeneration);
+            // Still clean up the streaming state even if stale
+            finalizeStreaming(agentKey);
+            return;
+          }
           // Save final agent response to server cache
           const state = getStreamingState(agentKey);
           console.log('[FINAL] onFinal called for:', agentKey, 'text length:', state.text?.length || 0, 'finalized:', state.finalized);
@@ -2238,10 +2276,17 @@
           finalizeStreaming(agentKey);
         },
         onError: (payload) => {
+          // Always log errors but check generation before updating UI
           console.error('[GW] Chat error:', payload);
+          if (chatLoadGeneration !== callbackGeneration) {
+            console.log('[ERROR] Ignoring stale error for generation:', callbackGeneration);
+          }
           finalizeStreaming(agentKey);
         }
       });
+
+      // Start polling only AFTER everything is set up (moved from wrapper)
+      startChatPolling();
     }
 
     // Parse natural language for movement commands
@@ -2638,8 +2683,9 @@
     async function pollChatMessages() {
       if (!currentAgentKey) return;
       
-      // Capture the agent key at request time for staleness check
+      // Capture the agent key AND generation at request time for staleness check
       const requestedAgentKey = currentAgentKey;
+      const requestedGeneration = chatLoadGeneration;
       
       try {
         const response = await fetch(`${API_BASE}/chat/${requestedAgentKey}`);
@@ -2649,8 +2695,9 @@
         if (!data.ok || !data.messages) return;
         
         // RACE CONDITION FIX: Check if user switched agents while fetch was in flight
-        if (currentAgentKey !== requestedAgentKey) {
-          console.log('[Sync] Agent changed during poll, discarding stale response for:', requestedAgentKey);
+        // Check BOTH agent key AND generation to catch rapid switches back to same agent
+        if (currentAgentKey !== requestedAgentKey || chatLoadGeneration !== requestedGeneration) {
+          console.log('[Sync] Stale poll response (agent or generation changed), discarding:', requestedAgentKey);
           return; // Discard stale data
         }
         
@@ -2675,6 +2722,11 @@
         // Only re-render if server has genuinely NEW content we don't have
         // Don't overwrite if we have more messages than server (e.g., Gateway history has more)
         if (hasNewContent && serverMessages.length >= chatMessagesCache.length) {
+          // Final staleness check before rendering
+          if (currentAgentKey !== requestedAgentKey || chatLoadGeneration !== requestedGeneration) {
+            console.log('[Sync] Stale before render, discarding');
+            return;
+          }
           console.log(`[Sync] New content detected, updating chat`);
           chatMessagesCache = serverMessages;
           renderChatMessages(serverMessages);
