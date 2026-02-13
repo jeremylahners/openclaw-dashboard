@@ -21,7 +21,7 @@
   
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/apexcharts@3.45.1/dist/apexcharts.min.js"></script>
-  <link rel="stylesheet" href="css/all-styles.css?v=4">
+  <link rel="stylesheet" href="css/all-styles.css?v=5">
   <link rel="stylesheet" href="css/toast.css?v=3">
   <link rel="stylesheet" href="css/loading.css?v=3">
 </head>
@@ -1635,14 +1635,20 @@
 
     // Render messages in chat panel
     function renderChatMessages(messages) {
-      console.log('[RENDER] Rendering', messages.length, 'messages');
+      // Filter out NO_REPLY messages (agent-to-agent coordination)
+      const visibleMessages = messages.filter(m => {
+        const content = (m.content || '').trim();
+        return content !== 'NO_REPLY';
+      });
+      
+      console.log('[RENDER] Rendering', visibleMessages.length, 'messages (filtered from', messages.length, ')');
       console.trace('[RENDER] Called from:');
-      if (messages.length === 0) {
+      if (visibleMessages.length === 0) {
         chatMessages.innerHTML = '<div style="text-align: center; color: #888; padding: 20px;">Start a conversation...</div>';
         return;
       }
 
-      chatMessages.innerHTML = messages.map((m) => {
+      chatMessages.innerHTML = visibleMessages.map((m) => {
         const isUser = !m.isBot;
         const bubbleClass = isUser ? 'you' : 'them';
         const avatarClass = isUser ? 'jeremy' : 'bot';
