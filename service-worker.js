@@ -1,8 +1,8 @@
 // OpenClaw Office - Service Worker
 // Handles push notifications, offline caching, and PWA functionality
 
-const CACHE_NAME = 'openclaw-office-v1';
-const CACHE_VERSION = '1.0.0';
+const CACHE_NAME = 'openclaw-office-v2';
+const CACHE_VERSION = '2.0.0';
 
 // Files to cache for offline access
 const urlsToCache = [
@@ -75,6 +75,12 @@ self.addEventListener('fetch', (event) => {
   
   // Skip gateway API requests (always fetch fresh)
   if (event.request.url.includes('/api/')) {
+    return;
+  }
+  
+  // NEVER cache index.html - always fetch fresh
+  if (event.request.url.endsWith('/') || event.request.url.endsWith('/index.html')) {
+    event.respondWith(fetch(event.request));
     return;
   }
   

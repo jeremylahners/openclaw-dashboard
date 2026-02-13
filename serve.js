@@ -65,7 +65,17 @@ const server = http.createServer((req, res) => {
         res.end('Server error: ' + err.code);
       }
     } else {
-      res.writeHead(200, { 'Content-Type': contentType });
+      // Add cache control headers
+      const headers = { 'Content-Type': contentType };
+      
+      // Never cache HTML files (always fetch fresh)
+      if (ext === '.html' || req.url === '/') {
+        headers['Cache-Control'] = 'no-cache, no-store, must-revalidate';
+        headers['Pragma'] = 'no-cache';
+        headers['Expires'] = '0';
+      }
+      
+      res.writeHead(200, headers);
       res.end(content);
     }
   });
