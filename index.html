@@ -2289,10 +2289,20 @@
               timestampFormatted: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
             };
             
-            // Add to BOTH caches
+            // Add to BOTH caches (with dedupe — Gateway may resend/retry the same response)
             const agentCache = getAgentCache(callbackAgentKey);
-            agentCache.push(agentMessage);
-            chatMessagesCache.push(agentMessage);
+            const lastMsg = agentCache[agentCache.length - 1];
+            if (lastMsg && lastMsg.isBot && (Date.now() - lastMsg.timestamp < 30000) &&
+                (lastMsg.content === state.text || state.text.includes(lastMsg.content))) {
+              // Replace the previous partial/duplicate instead of appending
+              agentCache[agentCache.length - 1] = agentMessage;
+              const cmIdx = chatMessagesCache.indexOf(lastMsg);
+              if (cmIdx !== -1) chatMessagesCache[cmIdx] = agentMessage;
+              else chatMessagesCache.push(agentMessage);
+            } else {
+              agentCache.push(agentMessage);
+              chatMessagesCache.push(agentMessage);
+            }
             
             fetch(`${API_BASE}/messages/${callbackAgentKey}/agent-reply`, {
               method: 'POST',
