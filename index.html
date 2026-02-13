@@ -21,9 +21,9 @@
   
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/apexcharts@3.45.1/dist/apexcharts.min.js"></script>
-  <link rel="stylesheet" href="css/all-styles.css">
-  <link rel="stylesheet" href="css/toast.css">
-  <link rel="stylesheet" href="css/loading.css">
+  <link rel="stylesheet" href="css/all-styles.css?v=3">
+  <link rel="stylesheet" href="css/toast.css?v=3">
+  <link rel="stylesheet" href="css/loading.css?v=3">
 </head>
 <body>
   <!-- Mobile menu button -->
@@ -261,54 +261,20 @@
 
   <!-- Mobile Bottom Navigation -->
   <div class="mobile-bottom-nav" id="mobileBottomNav">
-    <button class="mobile-nav-item" data-agent="isla">
-      <div class="mobile-nav-emoji">🏝️</div>
-      <div class="mobile-nav-name">Isla</div>
-    </button>
-    <button class="mobile-nav-item" data-agent="marcus">
-      <div class="mobile-nav-emoji">🔧</div>
-      <div class="mobile-nav-name">Marcus</div>
-    </button>
-    <button class="mobile-nav-item" data-agent="harper">
-      <div class="mobile-nav-emoji">🔍</div>
-      <div class="mobile-nav-name">Harper</div>
-    </button>
-    <button class="mobile-nav-item" data-agent="eli">
-      <div class="mobile-nav-emoji">🏗️</div>
-      <div class="mobile-nav-name">Eli</div>
-    </button>
-    <button class="mobile-nav-item" data-agent="sage">
-      <div class="mobile-nav-emoji">🔭</div>
-      <div class="mobile-nav-name">Sage</div>
-    </button>
-    <button class="mobile-nav-item" data-agent="julie">
-      <div class="mobile-nav-emoji">📣</div>
-      <div class="mobile-nav-name">Julie</div>
-    </button>
-    <button class="mobile-nav-item" data-agent="dash">
-      <div class="mobile-nav-emoji">🎨</div>
-      <div class="mobile-nav-name">Dash</div>
-    </button>
-    <button class="mobile-nav-item" data-agent="remy">
-      <div class="mobile-nav-emoji">🍳</div>
-      <div class="mobile-nav-name">Remy</div>
-    </button>
-    <button class="mobile-nav-item" data-agent="lena">
-      <div class="mobile-nav-emoji">💪</div>
-      <div class="mobile-nav-name">Lena</div>
-    </button>
-    <button class="mobile-nav-item" data-agent="val">
-      <div class="mobile-nav-emoji">💰</div>
-      <div class="mobile-nav-name">Val</div>
-    </button>
-    <button class="mobile-nav-item" data-agent="atlas">
-      <div class="mobile-nav-emoji">🗺️</div>
-      <div class="mobile-nav-name">Atlas</div>
-    </button>
-    <button class="mobile-nav-item" data-agent="nova">
-      <div class="mobile-nav-emoji">🌟</div>
-      <div class="mobile-nav-name">Nova</div>
-    </button>
+    <select class="mobile-agent-selector" id="mobileAgentSelector">
+      <option value="isla">🏝️ Isla - Chief of Staff</option>
+      <option value="marcus">🔧 Marcus - Dev Manager</option>
+      <option value="harper">🔍 Harper - QA Manager</option>
+      <option value="eli">🏗️ Eli - Chief Architect</option>
+      <option value="sage">🔭 Sage - Researcher</option>
+      <option value="julie">📣 Julie - Marketing</option>
+      <option value="dash">🎨 Dash - Designer</option>
+      <option value="remy">🍳 Remy - Chef</option>
+      <option value="lena">💪 Lena - Fitness Coach</option>
+      <option value="val">💰 Val - Finance</option>
+      <option value="atlas">🗺️ Atlas - Travel</option>
+      <option value="nova">🌟 Nova - AI Liaison</option>
+    </select>
   </div>
 
   <!-- Settings Modal -->
@@ -2532,12 +2498,12 @@
 
     // --- Mobile Bottom Navigation ---
     const mobileBottomNav = document.getElementById('mobileBottomNav');
-    const mobileNavItems = document.querySelectorAll('.mobile-nav-item');
+    const mobileAgentSelector = document.getElementById('mobileAgentSelector');
 
-    // Handle mobile nav clicks
-    mobileNavItems.forEach(navItem => {
-      navItem.addEventListener('click', () => {
-        const agentKey = navItem.dataset.agent;
+    // Handle mobile dropdown change
+    if (mobileAgentSelector) {
+      mobileAgentSelector.addEventListener('change', () => {
+        const agentKey = mobileAgentSelector.value;
 
         // Find the corresponding agent element
         const agent = document.querySelector(`.agent.${agentKey}`);
@@ -2545,24 +2511,16 @@
           agent.click(); // Trigger existing click handler
         }
 
-        // Update active state
-        mobileNavItems.forEach(item => item.classList.remove('active'));
-        navItem.classList.add('active');
-
         // Show side panel on mobile
         sidePanel.classList.remove('hidden');
       });
-    });
+    }
 
     // Update mobile nav active state when agent changes
     function updateMobileNavActive(agentKey) {
-      mobileNavItems.forEach(item => {
-        if (item.dataset.agent === agentKey) {
-          item.classList.add('active');
-        } else {
-          item.classList.remove('active');
-        }
-      });
+      if (mobileAgentSelector) {
+        mobileAgentSelector.value = agentKey;
+      }
     }
 
     // Override agent click to show overlay on mobile

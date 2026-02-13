@@ -52,8 +52,15 @@ const server = http.createServer((req, res) => {
 
   // Serve static files
   let filePath = path.join(PUBLIC_DIR, req.url === '/' ? 'index.html' : req.url);
+  
+  // Strip query parameters for file lookup
+  const urlWithoutQuery = req.url.split('?')[0];
+  filePath = path.join(PUBLIC_DIR, urlWithoutQuery === '/' ? 'index.html' : urlWithoutQuery);
+  
   const ext = path.extname(filePath);
   const contentType = MIME_TYPES[ext] || 'text/plain';
+  
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url} -> ${filePath}`);
   
   fs.readFile(filePath, (err, content) => {
     if (err) {

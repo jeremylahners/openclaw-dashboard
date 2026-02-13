@@ -1,26 +1,17 @@
 // OpenClaw Office - Service Worker
 // Handles push notifications, offline caching, and PWA functionality
 
-const CACHE_NAME = 'openclaw-office-v2';
-const CACHE_VERSION = '2.0.0';
+const CACHE_NAME = 'openclaw-office-v4';
+const CACHE_VERSION = '4.0.0';
 
 // Files to cache for offline access
 const urlsToCache = [
   '/',
   '/index.html',
   '/manifest.json',
-  '/config.js',
-  '/css/variables.css',
-  '/css/layout.css',
-  '/css/components.css',
-  '/css/mobile.css',
-  '/js/state.js',
-  '/js/dom.js',
-  '/js/api.js',
-  '/js/ui.js',
-  '/js/events.js',
-  '/js/utils.js',
-  '/js/main.js',
+  '/css/all-styles.css',
+  '/css/toast.css',
+  '/css/loading.css',
   // External dependencies
   'https://cdn.jsdelivr.net/npm/marked/marked.min.js',
   'https://cdn.jsdelivr.net/npm/apexcharts@3.45.1/dist/apexcharts.min.js'
@@ -84,15 +75,21 @@ self.addEventListener('fetch', (event) => {
     return;
   }
   
+  // For CSS/JS files with cache-busting params, strip query string for cache matching
+  const requestUrl = new URL(event.request.url);
+  const isCacheBusted = requestUrl.search.includes('v=');
+  const cacheKey = isCacheBusted ? requestUrl.origin + requestUrl.pathname : event.request.url;
+  
   event.respondWith(
-    caches.match(event.request)
+    // Always fetch fresh for cache-busted resources
+    (isCacheBusted ? fetch(event.request) : caches.match(event.request))
       .then((response) => {
-        if (response) {
+        if (response && !isCacheBusted) {
           // console.log('[Service Worker] Serving from cache:', event.request.url);
           return response;
         }
         
-        // Not in cache, fetch from network
+        // Not in cache or cache-busted, fetch from network
         return fetch(event.request)
           .then((response) => {
             // Don't cache if not successful
@@ -103,10 +100,13 @@ self.addEventListener('fetch', (event) => {
             // Clone response (can only be consumed once)
             const responseToCache = response.clone();
             
-            caches.open(CACHE_NAME)
-              .then((cache) => {
-                cache.put(event.request, responseToCache);
-              });
+            // Don't cache cache-busted resources
+            if (!isCacheBusted) {
+              caches.open(CACHE_NAME)
+                .then((cache) => {
+                  cache.put(event.request, responseToCache);
+                });
+            }
             
             return response;
           })
