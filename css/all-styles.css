@@ -1372,6 +1372,7 @@
       cursor: pointer;
       border-radius: 6px;
       transition: all 0.2s ease;
+      white-space: nowrap;
     }
 
     .left-tab:hover {
