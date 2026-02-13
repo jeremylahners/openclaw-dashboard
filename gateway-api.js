@@ -13,6 +13,7 @@ const INTERACTIONS_FILE = path.join(__dirname, '..', 'memory', 'agent-interactio
 const MESSAGES_FILE = path.join(__dirname, 'messages.json');
 const ACTION_ITEMS_FILE = path.join(__dirname, 'action-items.json');
 const PUSH_SUBSCRIPTIONS_FILE = path.join(__dirname, 'push-subscriptions.json');
+const STANDUP_FILE = path.join(__dirname, 'standup.json');
 const PORT = 8081;
 
 // OpenClaw Gateway config
@@ -598,207 +599,91 @@ const server = http.createServer(async (req, res) => {
     }
   }
   
-  // Daily Standup - Parse from agent memory files
+  // Daily Standup - Read from standup.json file
   else if (req.url === '/standup') {
-    const agentInfo = {
-      isla: { emoji: '🏝️', name: 'Isla', role: 'Chief of Staff' },
-      marcus: { emoji: '🔧', name: 'Marcus', role: 'Dev' },
-      julie: { emoji: '📣', name: 'Julie', role: 'Marketing' },
-      remy: { emoji: '🍳', name: 'Remy', role: 'Food' },
-      lena: { emoji: '💪', name: 'Lena', role: 'Fitness' },
-      harper: { emoji: '🔍', name: 'Harper', role: 'QA' },
-      sage: { emoji: '🔭', name: 'Sage', role: 'Research' },
-      val: { emoji: '💰', name: 'Val', role: 'Finance' },
-      eli: { emoji: '🏗️', name: 'Eli', role: 'Architecture' },
-      dash: { emoji: '🎨', name: 'Dash', role: 'Dashboard' }
-    };
-    
-    const updates = [];
-    const crossTeamItems = [];
-    
-    for (const [agentKey, info] of Object.entries(agentInfo)) {
-      const memoryPath = path.join(MEMORY_DIR, `${agentKey}.md`);
+    try {
+      // Check if standup file exists
+      if (!fs.existsSync(STANDUP_FILE)) {
+        // Return default empty state with current timestamp
+        const today = new Date();
+        const dateStr = today.toLocaleDateString('en-US', { 
+          weekday: 'short',
+          month: 'short', 
+          day: 'numeric'
+        });
+        const timeStr = today.toLocaleTimeString('en-US', {
+          hour: 'numeric',
+          minute: '2-digit'
+        });
+        
+        res.end(JSON.stringify({ 
+          ok: true, 
+          date: dateStr,
+          time: timeStr,
+          updates: [],
+          crossTeam: [],
+          message: 'No standup data available. Run standup cron or create standup.json manually.'
+        }));
+        return;
+      }
       
-      if (fs.existsSync(memoryPath)) {
-        try {
-          const content = fs.readFileSync(memoryPath, 'utf-8');
-          const lines = content.split('\n');
-          
-          const agentUpdate = {
-            agent: agentKey,
-            emoji: info.emoji,
-            name: info.name,
-            role: info.role,
-            items: [],      // Array of { status: '✅'|'🔄'|'⏳'|'⚠️', text: string }
-            learned: null,  // 📚 insight
-            blockers: []    // Any blockers
-          };
-          
-          let currentSection = null;
-          
-          for (let i = 0; i < lines.length; i++) {
-            const line = lines[i].trim();
-            
-            // Track sections
-            if (line.startsWith('## Current Status')) {
-              currentSection = 'status';
-              continue;
-            } else if (line.startsWith("## Today's Activity") || line.startsWith('## Today ')) {
-              currentSection = 'today';
-              continue;
-            } else if (line.startsWith('## Learned') || line.startsWith('## Learning')) {
-              currentSection = 'learned';
-              continue;
-            } else if (line.startsWith('## Blocker') || line.startsWith('## Blocked')) {
-              currentSection = 'blockers';
-              continue;
-            } else if (line.startsWith('##')) {
-              currentSection = null;
-              continue;
-            }
-            
-            if (!line) continue;
-            
-            // Parse Current Status - extract work items
-            if (currentSection === 'status') {
-              // "🟢 Active — Working on X" or just status text
-              const statusMatch = line.match(/^🟢.*[—-]\s*(.+)$/);
-              if (statusMatch) {
-                agentUpdate.items.push({ status: '🔄', text: statusMatch[1] });
-              }
-            }
-            
-            // Parse Today's Activity - extract completed/in-progress items
-            if (currentSection === 'today') {
-              // ✅ items (completed)
-              if (line.startsWith('✅')) {
-                const text = line
-                  .replace(/^✅\s*/, '')
-                  .replace(/^\d{1,2}:\d{2}\s*(AM|PM)?\s*[—-]\s*/i, '')  // Remove time prefix
-                  .trim();
-                if (text) agentUpdate.items.push({ status: '✅', text });
-              }
-              // 🔄 items (in progress)
-              else if (line.startsWith('🔄')) {
-                const text = line.replace(/^🔄\s*/, '').trim();
-                if (text) agentUpdate.items.push({ status: '🔄', text });
-              }
-              // ⏳ items (waiting)
-              else if (line.startsWith('⏳')) {
-                const text = line.replace(/^⏳\s*/, '').trim();
-                if (text) agentUpdate.items.push({ status: '⏳', text });
-              }
-              // ⚠️ items (blocked/issue)
-              else if (line.startsWith('⚠️')) {
-                const text = line.replace(/^⚠️\s*/, '').trim();
-                if (text) agentUpdate.items.push({ status: '⚠️', text });
-                agentUpdate.blockers.push(text);
-              }
-              // Regular bullet items - assume in progress
-              else if (line.startsWith('-') || line.startsWith('*')) {
-                const text = line.replace(/^[-*]\s*/, '').trim();
-                // Skip short lines, separators, table markers
-                if (text && text.length > 3 && !text.startsWith('|') && !text.match(/^[-—]+$/)) {
-                  agentUpdate.items.push({ status: '🔄', text });
-                }
-              }
-            }
-            
-            // Parse Learned section
-            if (currentSection === 'learned') {
-              if (line.startsWith('📚') || line.startsWith('-') || line.startsWith('*')) {
-                const text = line.replace(/^📚\s*/, '').replace(/^[-*]\s*/, '').trim();
-                if (text && !agentUpdate.learned) {
-                  agentUpdate.learned = text;
-                }
-              }
-              // Table format: | What | From | When |
-              if (line.startsWith('|') && !line.includes('---') && !line.includes('What')) {
-                const parts = line.split('|').map(s => s.trim()).filter(Boolean);
-                if (parts.length >= 1 && !agentUpdate.learned) {
-                  agentUpdate.learned = parts[0];
-                }
-              }
-            }
-            
-            // Parse Blockers section
-            if (currentSection === 'blockers') {
-              if (line.startsWith('-') || line.startsWith('*') || line.startsWith('⚠️')) {
-                const text = line.replace(/^[-*⚠️]\s*/, '').trim();
-                if (text) agentUpdate.blockers.push(text);
-              }
-            }
-            
-            // Also look for inline learned markers anywhere
-            if (line.startsWith('📚') && !agentUpdate.learned) {
-              agentUpdate.learned = line.replace(/^📚\s*/, '').trim();
-            }
-          }
-          
-          // If no items found, add a default status
-          if (agentUpdate.items.length === 0) {
-            agentUpdate.items.push({ status: '🔄', text: 'Standing by for tasks' });
-          }
-          
-          // Cap items at 4 most recent for display
-          if (agentUpdate.items.length > 4) {
-            agentUpdate.items = agentUpdate.items.slice(-4);
-          }
-          
-          updates.push(agentUpdate);
-          
-          // Check for cross-team mentions
-          if (agentUpdate.learned && agentUpdate.learned.toLowerCase().includes('team')) {
-            crossTeamItems.push({
-              agent: info.name,
-              text: agentUpdate.learned
-            });
-          }
-          
-        } catch (e) {
-          console.error(`Failed to parse ${agentKey} memory:`, e.message);
-          updates.push({
-            agent: agentKey,
-            emoji: info.emoji,
-            name: info.name,
-            role: info.role,
-            items: [{ status: '⚠️', text: 'Status unavailable' }],
-            learned: null,
-            blockers: []
-          });
-        }
-      } else {
-        updates.push({
-          agent: agentKey,
-          emoji: info.emoji,
-          name: info.name,
-          role: info.role,
-          items: [{ status: '⚠️', text: 'No memory file' }],
-          learned: null,
-          blockers: []
+      // Read and parse standup JSON
+      const standupData = JSON.parse(fs.readFileSync(STANDUP_FILE, 'utf-8'));
+      
+      // Check if data is stale (older than 24 hours)
+      const now = Date.now();
+      const dataTimestamp = standupData.timestamp || 0;
+      const ageHours = (now - dataTimestamp) / (1000 * 60 * 60);
+      
+      if (ageHours > 24) {
+        standupData.stale = true;
+        standupData.message = `Standup data is ${Math.floor(ageHours)} hours old`;
+      }
+      
+      // Ensure required fields exist
+      if (!standupData.date || !standupData.time) {
+        const today = new Date(dataTimestamp || Date.now());
+        standupData.date = standupData.date || today.toLocaleDateString('en-US', { 
+          weekday: 'short',
+          month: 'short', 
+          day: 'numeric'
+        });
+        standupData.time = standupData.time || today.toLocaleTimeString('en-US', {
+          hour: 'numeric',
+          minute: '2-digit'
         });
       }
+      
+      standupData.ok = true;
+      standupData.updates = standupData.updates || [];
+      standupData.crossTeam = standupData.crossTeam || [];
+      
+      res.end(JSON.stringify(standupData));
+      
+    } catch (e) {
+      console.error('[Standup] Failed to read standup.json:', e.message);
+      
+      // Return error state with current timestamp
+      const today = new Date();
+      const dateStr = today.toLocaleDateString('en-US', { 
+        weekday: 'short',
+        month: 'short', 
+        day: 'numeric'
+      });
+      const timeStr = today.toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit'
+      });
+      
+      res.end(JSON.stringify({ 
+        ok: false,
+        error: 'Failed to load standup data',
+        date: dateStr,
+        time: timeStr,
+        updates: [],
+        crossTeam: []
+      }));
     }
-    
-    // Format date
-    const today = new Date();
-    const dateStr = today.toLocaleDateString('en-US', { 
-      weekday: 'short',
-      month: 'short', 
-      day: 'numeric'
-    });
-    const timeStr = today.toLocaleTimeString('en-US', {
-      hour: 'numeric',
-      minute: '2-digit'
-    });
-    
-    res.end(JSON.stringify({ 
-      ok: true, 
-      date: dateStr,
-      time: timeStr,
-      updates: updates,
-      crossTeam: crossTeamItems
-    }));
   }
   
   // Action Items - Get (GET)

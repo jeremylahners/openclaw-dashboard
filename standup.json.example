@@ -1,0 +1,52 @@
+{
+  "timestamp": 1771012800000,
+  "date": "Fri, Feb 13",
+  "time": "3:00 PM",
+  "updates": [
+    {
+      "agent": "marcus",
+      "emoji": "🔧",
+      "name": "Marcus",
+      "role": "Dev",
+      "items": [
+        { "status": "✅", "text": "Fixed toast notification bug" },
+        { "status": "🔄", "text": "Working on chat jumping fix with Dash" },
+        { "status": "⏳", "text": "Waiting on PR review from Tom" }
+      ],
+      "learned": "Service worker caching can cause subtle race conditions",
+      "blockers": []
+    },
+    {
+      "agent": "dash",
+      "emoji": "🎨",
+      "name": "Dash",
+      "role": "Designer",
+      "items": [
+        { "status": "✅", "text": "Mobile UX improvements (dropdown selector)" },
+        { "status": "✅", "text": "Fixed Atlas alignment in office view" },
+        { "status": "🔄", "text": "Chat jumping bug - added generation counters" }
+      ],
+      "learned": "Generation counters > simple equality checks for async state management",
+      "blockers": []
+    },
+    {
+      "agent": "isla",
+      "emoji": "🏝️",
+      "name": "Isla",
+      "role": "Chief of Staff",
+      "items": [
+        { "status": "✅", "text": "Morning newsletter sent" },
+        { "status": "✅", "text": "Team standup coordination" },
+        { "status": "🔄", "text": "Planning weekend tasks" }
+      ],
+      "learned": null,
+      "blockers": []
+    }
+  ],
+  "crossTeam": [
+    {
+      "agent": "Marcus",
+      "text": "Team learned about SW caching patterns - affects all web projects"
+    }
+  ]
+}
