@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Icon Generator - OpenClaw Office</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      max-width: 800px;
+      margin: 40px auto;
+      padding: 20px;
+    }
+    canvas {
+      border: 1px solid #ddd;
+      margin: 10px;
+    }
+    button {
+      margin: 10px;
+      padding: 10px 20px;
+      font-size: 16px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Generate PWA Icons</h1>
+  <p>Click "Generate All Icons" to create icon files for the PWA</p>
+  
+  <button onclick="generateAllIcons()">Generate All Icons</button>
+  
+  <div id="preview"></div>
+  
+  <script>
+    const sizes = [72, 96, 128, 144, 152, 192, 384, 512];
+    
+    function generateIcon(size, maskable = false) {
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      
+      // Background gradient
+      const gradient = ctx.createLinearGradient(0, 0, size, size);
+      gradient.addColorStop(0, '#0ea5e9'); // cyan
+      gradient.addColorStop(1, '#3b82f6'); // blue
+      ctx.fillStyle = gradient;
+      
+      if (maskable) {
+        // Maskable icon - add padding
+        ctx.fillRect(0, 0, size, size);
+      } else {
+        // Regular icon - rounded corners
+        const radius = size * 0.15;
+        ctx.beginPath();
+        ctx.moveTo(radius, 0);
+        ctx.lineTo(size - radius, 0);
+        ctx.quadraticCurveTo(size, 0, size, radius);
+        ctx.lineTo(size, size - radius);
+        ctx.quadraticCurveTo(size, size, size - radius, size);
+        ctx.lineTo(radius, size);
+        ctx.quadraticCurveTo(0, size, 0, size - radius);
+        ctx.lineTo(0, radius);
+        ctx.quadraticCurveTo(0, 0, radius, 0);
+        ctx.closePath();
+        ctx.fill();
+      }
+      
+      // Draw "OC" text
+      ctx.fillStyle = 'white';
+      ctx.font = `bold ${size * 0.4}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('OC', size / 2, size / 2);
+      
+      return canvas;
+    }
+    
+    function generateAllIcons() {
+      const preview = document.getElementById('preview');
+      preview.innerHTML = '<h2>Generated Icons (right-click to save):</h2>';
+      
+      sizes.forEach(size => {
+        const canvas = generateIcon(size, false);
+        const div = document.createElement('div');
+        div.innerHTML = `<h3>${size}x${size}</h3>`;
+        div.appendChild(canvas);
+        
+        // Add download link
+        const link = document.createElement('a');
+        link.href = canvas.toDataURL('image/png');
+        link.download = `icon-${size}.png`;
+        link.textContent = `Download icon-${size}.png`;
+        link.style.display = 'block';
+        link.style.margin = '10px';
+        div.appendChild(link);
+        
+        preview.appendChild(div);
+      });
+      
+      // Generate maskable icon
+      const maskable = generateIcon(512, true);
+      const divMaskable = document.createElement('div');
+      divMaskable.innerHTML = '<h3>512x512 (Maskable)</h3>';
+      divMaskable.appendChild(maskable);
+      
+      const linkMaskable = document.createElement('a');
+      linkMaskable.href = maskable.toDataURL('image/png');
+      linkMaskable.download = 'icon-512-maskable.png';
+      linkMaskable.textContent = 'Download icon-512-maskable.png';
+      linkMaskable.style.display = 'block';
+      linkMaskable.style.margin = '10px';
+      divMaskable.appendChild(linkMaskable);
+      
+      preview.appendChild(divMaskable);
+      
+      alert('Icons generated! Click the download links to save each icon.');
+    }
+  </script>
+</body>
+</html>

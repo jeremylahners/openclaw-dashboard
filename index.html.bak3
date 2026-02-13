@@ -4,29 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>The Office - Team HQ</title>
-  
-  <!-- PWA Manifest -->
-  <link rel="manifest" href="/manifest.json">
-  
-  <!-- PWA Meta Tags -->
-  <meta name="theme-color" content="#0ea5e9">
-  <meta name="description" content="OpenClaw agent workspace dashboard">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Office">
-  
-  <!-- PWA Icons -->
-  <link rel="icon" href="/icons/icon-192.png" sizes="192x192">
-  <link rel="apple-touch-icon" href="/icons/icon-192.png">
-  
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/apexcharts@3.45.1/dist/apexcharts.min.js"></script>
-  <link rel="stylesheet" href="css/all-styles.css">
-  <link rel="stylesheet" href="css/toast.css">
-  <link rel="stylesheet" href="css/loading.css">
-  <script src="js/utils/toast.js"></script>
-  <script src="js/utils/loading.js"></script>
-  <script src="js/utils/error-handler.js"></script>
 </head>
 <body>
   <!-- Mobile menu button -->
@@ -136,13 +115,6 @@
         <div class="agent-task">Ready</div>
       </div>
 
-      <div class="agent nova" data-name="Nova" data-role="HR Advisor" data-task="Ready to help" data-quote="The most caring thing is often the most direct thing." data-emoji="🌟">
-        <div class="avatar">🌟<div class="status-dot status-idle"></div><div class="unread-badge">💬</div></div>
-        <div class="agent-name">Nova</div>
-        <div class="agent-role">HR</div>
-        <div class="agent-task">Ready</div>
-      </div>
-
       <div class="agent isla" data-name="Isla" data-role="Chief of Staff" data-task="Team coordination" data-quote="Sycophants are useless. I'd rather be helpful than agreeable." data-emoji="🏝️">
         <div class="avatar">🏝️<div class="status-dot status-working"></div><div class="unread-badge">💬</div></div>
         <div class="agent-name">Isla</div>
@@ -166,7 +138,6 @@
       <div class="left-tab active" data-tab="priorities">🎯 Priorities</div>
       <div class="left-tab" data-tab="standup">📋 Standup</div>
       <div class="left-tab" data-tab="interactions">🔗 Activity</div>
-      <button class="settings-btn" id="settingsBtn" title="Notification Settings">⚙️</button>
     </div>
 
     <!-- Priorities Tab -->
@@ -308,52 +279,6 @@
       <div class="mobile-nav-emoji">🗺️</div>
       <div class="mobile-nav-name">Atlas</div>
     </button>
-    <button class="mobile-nav-item" data-agent="nova">
-      <div class="mobile-nav-emoji">🌟</div>
-      <div class="mobile-nav-name">Nova</div>
-    </button>
-  </div>
-
-  <!-- Settings Modal -->
-  <div class="settings-modal hidden" id="settingsModal">
-    <div class="settings-content">
-      <div class="settings-header">
-        <h2>⚙️ Notification Settings</h2>
-        <button class="settings-close" id="settingsClose">×</button>
-      </div>
-      
-      <div class="settings-body">
-        <div class="settings-section">
-          <label class="settings-toggle">
-            <input type="checkbox" id="notificationsEnabled" checked>
-            <span>Enable push notifications</span>
-          </label>
-          <div class="settings-help">
-            Receive notifications when agents respond
-          </div>
-        </div>
-
-        <div class="settings-section" id="agentTogglesSection">
-          <div class="settings-label">Notify me when these agents respond:</div>
-          <div class="agent-toggles" id="agentToggles">
-            <!-- Agent toggles will be inserted here -->
-          </div>
-        </div>
-
-        <div class="settings-section">
-          <button class="btn-primary" id="testNotificationBtn">
-            🔔 Send Test Notification
-          </button>
-        </div>
-
-        <div class="settings-section">
-          <div class="settings-label">Push Status</div>
-          <div class="settings-status" id="pushStatus">
-            <span id="pushStatusText">Checking...</span>
-          </div>
-        </div>
-      </div>
-    </div>
   </div>
   
   <script src="config.js"></script>
@@ -1205,7 +1130,6 @@
       lena: { top: 140, right: 100 },
       val: { top: 270, right: 100 },
       atlas: { bottom: 90, right: 120 },
-      nova: { top: 170, left: 400 },
       isla: { bottom: -10 }
     };
 
@@ -1911,14 +1835,10 @@
       if (state.el) return state.el;
 
       const ts = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-      
-      // Get the correct emoji for THIS agent, not the currently selected one
-      const agentEl = document.querySelector(`.agent.${agentKey}`);
-      const emoji = agentEl?.dataset?.emoji || '🤖';
+      const emoji = selectedAgent?.dataset?.emoji || '🤖';
 
       const el = document.createElement('div');
       el.className = 'message-bubble them';
-      el.setAttribute('data-agent-key', agentKey); // Mark which agent this belongs to
       el.innerHTML = `
         <div class="bubble-avatar bot">${emoji}</div>
         <div class="bubble-content">
@@ -1960,18 +1880,16 @@
     function finalizeStreaming(agentKey) {
       const state = getStreamingState(agentKey);
       if (state.el) {
-        // Only remove if this element is in the DOM
-        if (state.el.parentElement) {
-          state.el.remove();
-        }
+        // Remove the streaming div - the message is now in chatMessagesCache
+        // and will be rendered properly by renderChatMessages or poll
+        state.el.remove();
       }
       state.el = null;
       state.text = '';
       state.finalized = false;
       
-      // Only re-render if we're currently viewing THIS agent
-      // Don't re-render if another agent finished while we're viewing someone else
-      if (currentAgentKey === agentKey && chatMessagesCache.length > 0) {
+      // Re-render from cache to show the proper message bubble
+      if (chatMessagesCache.length > 0) {
         renderChatMessages(chatMessagesCache);
       }
     }
@@ -2612,287 +2530,6 @@
         }
       }, 500);
     }
-
-    // ============================================================
-    // PWA SERVICE WORKER & PUSH NOTIFICATIONS
-    // ============================================================
-
-    // VAPID Public Key (from config)
-    const VAPID_PUBLIC_KEY = 'BDN_XpBCR60xryFLfXVewyeWk5VwOOnKzUHx2k1ocUPpOIFixyalNdiuvOvVuT6PLEHGHIZ1SF-6VlImmcyC9nQ';
-
-    // Helper: Convert VAPID key to Uint8Array
-    function urlBase64ToUint8Array(base64String) {
-      const padding = '='.repeat((4 - base64String.length % 4) % 4);
-      const base64 = (base64String + padding)
-        .replace(/-/g, '+')
-        .replace(/_/g, '/');
-      const rawData = window.atob(base64);
-      const outputArray = new Uint8Array(rawData.length);
-      for (let i = 0; i < rawData.length; ++i) {
-        outputArray[i] = rawData.charCodeAt(i);
-      }
-      return outputArray;
-    }
-
-    // Check if PWA features are supported
-    if ('serviceWorker' in navigator && 'PushManager' in window) {
-      console.log('[PWA] Service worker and push notifications supported');
-      
-      // Register service worker
-      navigator.serviceWorker.register('/service-worker.js')
-        .then(async (registration) => {
-          console.log('[PWA] Service Worker registered:', registration.scope);
-          
-          // Check if already subscribed
-          const existingSubscription = await registration.pushManager.getSubscription();
-          
-          if (existingSubscription) {
-            console.log('[PWA] Already subscribed to push notifications');
-            return;
-          }
-          
-          // Wait a bit before requesting permission (better UX)
-          setTimeout(async () => {
-            try {
-              // Request notification permission
-              const permission = await Notification.requestPermission();
-              
-              if (permission === 'granted') {
-                console.log('[PWA] Notification permission granted');
-                
-                // Subscribe to push notifications
-                const subscription = await registration.pushManager.subscribe({
-                  userVisibleOnly: true,
-                  applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
-                });
-                
-                console.log('[PWA] Push subscription created:', subscription.endpoint);
-                
-                // Send subscription to backend
-                const response = await fetch('/api/push/subscribe', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify(subscription)
-                });
-                
-                const result = await response.json();
-                
-                if (result.ok) {
-                  console.log('[PWA] ✅ Push notifications enabled');
-                  showToast('Push notifications enabled! 🔔', 'success');
-                } else {
-                  console.error('[PWA] Failed to register subscription:', result.error);
-                  showToast('Failed to enable notifications', 'error');
-                }
-              } else {
-                console.log('[PWA] Notification permission denied');
-              }
-            } catch (err) {
-              console.error('[PWA] Notification setup failed:', err);
-            }
-          }, 2000); // Wait 2 seconds after page load
-        })
-        .catch((err) => {
-          console.error('[PWA] Service Worker registration failed:', err);
-        });
-      
-      // Listen for messages from service worker (e.g., notification clicks)
-      navigator.serviceWorker.addEventListener('message', (event) => {
-        console.log('[PWA] Message from service worker:', event.data);
-        
-        // Handle agent switch from notification click
-        if (event.data && event.data.type === 'SWITCH_AGENT') {
-          const agentKey = event.data.agentKey;
-          const agentElement = document.querySelector(`.agent.${agentKey}`);
-          
-          if (agentElement) {
-            agentElement.click();
-          }
-        }
-      });
-      
-      // Handle "beforeinstallprompt" event for PWA installation
-      let deferredPrompt;
-      window.addEventListener('beforeinstallprompt', (e) => {
-        e.preventDefault();
-        deferredPrompt = e;
-        
-        console.log('[PWA] Install prompt available');
-        
-        // Show custom "Install App" button (if you want to add UI for this)
-        // For now, users can install via browser menu
-      });
-      
-      // Track installation
-      window.addEventListener('appinstalled', () => {
-        console.log('[PWA] App installed successfully');
-        showToast('Office installed! 📱', 'success');
-        deferredPrompt = null;
-      });
-      
-    } else {
-      console.warn('[PWA] Service worker or push notifications not supported on this browser');
-    }
-
-    // ============================================================
-    // NOTIFICATION SETTINGS MODAL
-    // ============================================================
-
-    const settingsBtn = document.getElementById('settingsBtn');
-    const settingsModal = document.getElementById('settingsModal');
-    const settingsClose = document.getElementById('settingsClose');
-    const notificationsEnabled = document.getElementById('notificationsEnabled');
-    const agentTogglesContainer = document.getElementById('agentToggles');
-    const testNotificationBtn = document.getElementById('testNotificationBtn');
-    const pushStatusText = document.getElementById('pushStatusText');
-
-    // All agents list
-    const allAgents = [
-      { key: 'isla', emoji: '🏝️', name: 'Isla' },
-      { key: 'marcus', emoji: '🔧', name: 'Marcus' },
-      { key: 'harper', emoji: '🔍', name: 'Harper' },
-      { key: 'eli', emoji: '🏗️', name: 'Eli' },
-      { key: 'sage', emoji: '🔬', name: 'Sage' },
-      { key: 'julie', emoji: '📢', name: 'Julie' },
-      { key: 'dash', emoji: '🏃', name: 'Dash' },
-      { key: 'remy', emoji: '👨‍🍳', name: 'Remy' },
-      { key: 'lena', emoji: '💪', name: 'Lena' },
-      { key: 'val', emoji: '💰', name: 'Val' },
-      { key: 'atlas', emoji: '🗺️', name: 'Atlas' },
-      { key: 'nova', emoji: '🌟', name: 'Nova' }
-    ];
-
-    // Load notification settings from localStorage
-    function loadNotificationSettings() {
-      const settings = localStorage.getItem('notificationSettings');
-      if (settings) {
-        return JSON.parse(settings);
-      }
-      // Default: all enabled
-      return {
-        enabled: true,
-        agents: allAgents.map(a => a.key)
-      };
-    }
-
-    // Save notification settings to localStorage
-    function saveNotificationSettings(settings) {
-      localStorage.setItem('notificationSettings', JSON.stringify(settings));
-    }
-
-    // Initialize settings
-    let notificationSettings = loadNotificationSettings();
-
-    // Populate agent toggles
-    function renderAgentToggles() {
-      agentTogglesContainer.innerHTML = allAgents.map(agent => `
-        <label class="agent-toggle">
-          <input 
-            type="checkbox" 
-            data-agent="${agent.key}" 
-            ${notificationSettings.agents.includes(agent.key) ? 'checked' : ''}
-          >
-          <span class="agent-toggle-label">
-            <span class="agent-toggle-emoji">${agent.emoji}</span>
-            <span>${agent.name}</span>
-          </span>
-        </label>
-      `).join('');
-
-      // Add event listeners
-      agentTogglesContainer.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
-        checkbox.addEventListener('change', (e) => {
-          const agentKey = e.target.dataset.agent;
-          if (e.target.checked) {
-            if (!notificationSettings.agents.includes(agentKey)) {
-              notificationSettings.agents.push(agentKey);
-            }
-          } else {
-            notificationSettings.agents = notificationSettings.agents.filter(k => k !== agentKey);
-          }
-          saveNotificationSettings(notificationSettings);
-        });
-      });
-    }
-
-    // Update push status
-    async function updatePushStatus() {
-      try {
-        const response = await fetch('/api/push/status');
-        const status = await response.json();
-        
-        if (status.ok && status.enabled) {
-          pushStatusText.innerHTML = `
-            ✅ Push notifications configured<br>
-            ${status.subscribers} device(s) subscribed
-          `;
-          pushStatusText.style.color = '#4ade80';
-        } else {
-          pushStatusText.innerHTML = '⚠️ Push notifications not configured';
-          pushStatusText.style.color = '#fbbf24';
-        }
-      } catch (err) {
-        pushStatusText.innerHTML = '❌ Failed to check status';
-        pushStatusText.style.color = '#f87171';
-      }
-    }
-
-    // Open settings modal
-    settingsBtn.addEventListener('click', () => {
-      settingsModal.classList.remove('hidden');
-      notificationsEnabled.checked = notificationSettings.enabled;
-      renderAgentToggles();
-      updatePushStatus();
-    });
-
-    // Close settings modal
-    settingsClose.addEventListener('click', () => {
-      settingsModal.classList.add('hidden');
-    });
-
-    // Click outside to close
-    settingsModal.addEventListener('click', (e) => {
-      if (e.target === settingsModal) {
-        settingsModal.classList.add('hidden');
-      }
-    });
-
-    // Toggle notifications on/off
-    notificationsEnabled.addEventListener('change', (e) => {
-      notificationSettings.enabled = e.target.checked;
-      saveNotificationSettings(notificationSettings);
-      
-      if (e.target.checked) {
-        showToast('Notifications enabled', 'success');
-      } else {
-        showToast('Notifications disabled', 'info');
-      }
-    });
-
-    // Test notification button
-    testNotificationBtn.addEventListener('click', async () => {
-      try {
-        testNotificationBtn.disabled = true;
-        testNotificationBtn.textContent = 'Sending...';
-        
-        const response = await fetch('/api/push/test', { method: 'POST' });
-        const result = await response.json();
-        
-        if (result.ok) {
-          showToast('Test notification sent! 🔔', 'success');
-        } else {
-          showToast('Failed to send test notification', 'error');
-        }
-      } catch (err) {
-        showToast('Error sending test notification', 'error');
-      } finally {
-        testNotificationBtn.disabled = false;
-        testNotificationBtn.textContent = '🔔 Send Test Notification';
-      }
-    });
-
-    // Initialize
-    renderAgentToggles();
   </script>
 </body>
 </html>

@@ -1,0 +1,20 @@
+{
+  "name": "openclaw-office",
+  "version": "1.0.0",
+  "description": "OpenClaw Office Dashboard - PWA Edition",
+  "main": "gateway-api.js",
+  "scripts": {
+    "start": "node gateway-api.js",
+    "serve": "node serve.js",
+    "dev": "node gateway-api.js",
+    "generate-vapid": "node generate-vapid-keys.js"
+  },
+  "keywords": ["openclaw", "dashboard", "pwa", "push-notifications"],
+  "author": "OpenClaw",
+  "license": "MIT",
+  "dependencies": {
+    "web-push": "^3.6.7",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {}
+}

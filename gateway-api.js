@@ -2,6 +2,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const webpush = require('web-push');
 
 // Load config
 const config = require('./config.js');
@@ -11,6 +12,7 @@ const STATUS_FILE = path.join(__dirname, '..', 'memory', 'agent-status.json');
 const INTERACTIONS_FILE = path.join(__dirname, '..', 'memory', 'agent-interactions.json');
 const MESSAGES_FILE = path.join(__dirname, 'messages.json');
 const ACTION_ITEMS_FILE = path.join(__dirname, 'action-items.json');
+const PUSH_SUBSCRIPTIONS_FILE = path.join(__dirname, 'push-subscriptions.json');
 const PORT = 8081;
 
 // OpenClaw Gateway config
@@ -29,7 +31,8 @@ const agentSessions = {
   remy: "agent:remy:webchat:user",
   lena: "agent:lena:webchat:user",
   val: "agent:val:webchat:user",
-  atlas: "agent:atlas:webchat:user"
+  atlas: "agent:atlas:webchat:user",
+  nova: "agent:nova:webchat:user"
 };
 
 // Agent channel names for display
@@ -44,8 +47,102 @@ const agentChannels = {
   remy: { name: "#chef" },
   lena: { name: "#gym" },
   val: { name: "#finance" },
-  atlas: { name: "#travel" }
+  atlas: { name: "#travel" },
+  nova: { name: "#hr" }
 };
+
+// ============================================================
+// PWA PUSH NOTIFICATIONS
+// ============================================================
+
+// Configure VAPID for web push
+if (config.vapid) {
+  webpush.setVapidDetails(
+    config.vapid.subject,
+    config.vapid.publicKey,
+    config.vapid.privateKey
+  );
+  console.log('✅ Web Push configured with VAPID keys');
+} else {
+  console.warn('⚠️  VAPID keys not configured - push notifications disabled');
+}
+
+// Load push subscriptions from file
+function loadPushSubscriptions() {
+  try {
+    if (fs.existsSync(PUSH_SUBSCRIPTIONS_FILE)) {
+      const data = fs.readFileSync(PUSH_SUBSCRIPTIONS_FILE, 'utf-8');
+      return JSON.parse(data);
+    }
+  } catch (e) {
+    console.error('Failed to load push subscriptions:', e.message);
+  }
+  return [];
+}
+
+// Save push subscriptions to file
+function savePushSubscriptions(subscriptions) {
+  try {
+    fs.writeFileSync(
+      PUSH_SUBSCRIPTIONS_FILE,
+      JSON.stringify(subscriptions, null, 2),
+      'utf-8'
+    );
+  } catch (e) {
+    console.error('Failed to save push subscriptions:', e.message);
+  }
+}
+
+// In-memory storage of push subscriptions
+let pushSubscriptions = loadPushSubscriptions();
+
+// Send push notification to all subscribers
+async function sendPushNotification(agentKey, message) {
+  if (!config.vapid) {
+    console.log('Push notifications disabled (no VAPID keys)');
+    return;
+  }
+  
+  if (pushSubscriptions.length === 0) {
+    console.log('No push subscribers');
+    return;
+  }
+  
+  const agentName = agentKey.charAt(0).toUpperCase() + agentKey.slice(1);
+  const messagePreview = message.substring(0, 100) + (message.length > 100 ? '...' : '');
+  
+  const payload = JSON.stringify({
+    title: `${agentName} responded`,
+    body: messagePreview,
+    agentKey: agentKey,
+    url: `/?agent=${agentKey}`,
+    timestamp: Date.now()
+  });
+  
+  const results = await Promise.allSettled(
+    pushSubscriptions.map(async (subscription) => {
+      try {
+        await webpush.sendNotification(subscription, payload);
+        return { success: true };
+      } catch (err) {
+        // If subscription expired (410 Gone), remove it
+        if (err.statusCode === 410) {
+          console.log('Removing expired push subscription');
+          pushSubscriptions = pushSubscriptions.filter(s => s.endpoint !== subscription.endpoint);
+          savePushSubscriptions(pushSubscriptions);
+        }
+        throw err;
+      }
+    })
+  );
+  
+  const succeeded = results.filter(r => r.status === 'fulfilled').length;
+  const failed = results.filter(r => r.status === 'rejected').length;
+  
+  console.log(`📤 Push notifications sent: ${succeeded} succeeded, ${failed} failed`);
+}
+
+// ============================================================
 
 // Call Gateway API
 async function gatewayCall(tool, args) {
@@ -449,6 +546,12 @@ const server = http.createServer(async (req, res) => {
         addMessage(agentKey, agentMessage);
         
         console.log(`📬 Agent reply cached for ${agentKey}: ${content.substring(0, 50)}...`);
+        
+        // 🔔 Send push notification for agent response
+        sendPushNotification(agentKey, content).catch(err => {
+          console.error(`Push notification failed for ${agentKey}:`, err.message);
+        });
+        
         res.end(JSON.stringify({ ok: true, message: 'Agent reply cached' }));
       } catch (e) {
         res.statusCode = 400;
@@ -902,6 +1005,84 @@ const server = http.createServer(async (req, res) => {
       res.statusCode = 404;
       res.end(JSON.stringify({ ok: false, error: 'File not found' }));
     }
+  }
+  
+  // Push Notifications - Subscribe
+  else if (req.url === '/push/subscribe' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => body += chunk);
+    req.on('end', () => {
+      try {
+        const subscription = JSON.parse(body);
+        
+        // Validate subscription object
+        if (!subscription.endpoint || !subscription.keys) {
+          res.statusCode = 400;
+          res.end(JSON.stringify({ ok: false, error: 'Invalid subscription' }));
+          return;
+        }
+        
+        // Check if already subscribed (avoid duplicates)
+        const exists = pushSubscriptions.find(s => s.endpoint === subscription.endpoint);
+        if (!exists) {
+          pushSubscriptions.push(subscription);
+          savePushSubscriptions(pushSubscriptions);
+          console.log(`✅ New push subscriber (total: ${pushSubscriptions.length})`);
+        } else {
+          console.log('Push subscriber already exists');
+        }
+        
+        res.end(JSON.stringify({ ok: true, subscribers: pushSubscriptions.length }));
+      } catch (e) {
+        res.statusCode = 500;
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
+  }
+  
+  // Push Notifications - Unsubscribe
+  else if (req.url === '/push/unsubscribe' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => body += chunk);
+    req.on('end', () => {
+      try {
+        const { endpoint } = JSON.parse(body);
+        
+        const before = pushSubscriptions.length;
+        pushSubscriptions = pushSubscriptions.filter(s => s.endpoint !== endpoint);
+        savePushSubscriptions(pushSubscriptions);
+        
+        const removed = before - pushSubscriptions.length;
+        console.log(`❌ Push subscriber removed (total: ${pushSubscriptions.length})`);
+        
+        res.end(JSON.stringify({ ok: true, removed, subscribers: pushSubscriptions.length }));
+      } catch (e) {
+        res.statusCode = 500;
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
+  }
+  
+  // Push Notifications - Test
+  else if (req.url === '/push/test' && req.method === 'POST') {
+    sendPushNotification('isla', 'This is a test notification from OpenClaw Office! 🔔')
+      .then(() => {
+        res.end(JSON.stringify({ ok: true, message: 'Test notification sent' }));
+      })
+      .catch(err => {
+        res.statusCode = 500;
+        res.end(JSON.stringify({ ok: false, error: err.message }));
+      });
+  }
+  
+  // Push Notifications - Get status
+  else if (req.url === '/push/status' && req.method === 'GET') {
+    res.end(JSON.stringify({
+      ok: true,
+      enabled: !!config.vapid,
+      subscribers: pushSubscriptions.length,
+      vapidConfigured: !!(config.vapid && config.vapid.publicKey)
+    }));
   }
   
   else {
