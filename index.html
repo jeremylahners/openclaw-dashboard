@@ -1588,6 +1588,7 @@
 
     // --- Chat System (WebSocket-based) ---
     let currentAgentKey = null;
+    let chatLoadGeneration = 0; // Increments on each agent switch to ignore stale async responses
 
     // Load drafts from localStorage on startup
     let messageDrafts = {};
@@ -2073,6 +2074,9 @@
         return;
       }
 
+      // CRITICAL: Stop polling IMMEDIATELY to prevent race conditions
+      stopChatPolling();
+
       // Save draft for previous agent
       saveDraftForCurrentAgent();
 
@@ -2104,6 +2108,12 @@
           });
           
           gatewayLoaded = true; // Mark that Gateway responded (even if empty)
+          
+          // RACE CONDITION FIX: Check if user switched agents while we were waiting
+          if (currentAgentKey !== agentKey) {
+            console.log('[LOAD] Agent changed during Gateway request, discarding stale response for:', agentKey);
+            return; // Discard stale data - another loadAgentChat will handle the new agent
+          }
           
           // If we got gateway history and it has messages, show them
           if (history && history.messages && history.messages.length > 0) {
@@ -2148,6 +2158,13 @@
         try {
           const response = await fetch(`${API_BASE}/chat/${agentKey}`);
           const data = await response.json();
+          
+          // RACE CONDITION FIX: Check if user switched agents while we were waiting
+          if (currentAgentKey !== agentKey) {
+            console.log('[LOAD] Agent changed during cache fetch, discarding stale response for:', agentKey);
+            return; // Discard stale data
+          }
+          
           if (data.ok && data.messages && data.messages.length > 0) {
             chatMessagesCache = data.messages;
             renderChatMessages(data.messages);
@@ -2156,15 +2173,21 @@
           }
         } catch (e) {
           console.log('Cache fetch failed:', e);
-          chatMessages.innerHTML = '<div style="text-align: center; color: #666; padding: 20px;">Start a conversation...</div>';
+          // Only show error if we're still viewing this agent
+          if (currentAgentKey === agentKey) {
+            chatMessages.innerHTML = '<div style="text-align: center; color: #666; padding: 20px;">Start a conversation...</div>';
+          }
         }
       }
 
       // If this agent has a pending streaming message, append it now
-      const state = getStreamingState(agentKey);
-      if (state.el && !state.el.parentElement) {
-        chatMessages.appendChild(state.el);
-        chatMessages.scrollTop = chatMessages.scrollHeight;
+      // But only if we're still viewing this agent (could have switched during async operations)
+      if (currentAgentKey === agentKey) {
+        const state = getStreamingState(agentKey);
+        if (state.el && !state.el.parentElement) {
+          chatMessages.appendChild(state.el);
+          chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
       }
 
       // Register streaming callback for this agent's session
@@ -2615,12 +2638,21 @@
     async function pollChatMessages() {
       if (!currentAgentKey) return;
       
+      // Capture the agent key at request time for staleness check
+      const requestedAgentKey = currentAgentKey;
+      
       try {
-        const response = await fetch(`${API_BASE}/chat/${currentAgentKey}`);
+        const response = await fetch(`${API_BASE}/chat/${requestedAgentKey}`);
         if (!response.ok) return;
         
         const data = await response.json();
         if (!data.ok || !data.messages) return;
+        
+        // RACE CONDITION FIX: Check if user switched agents while fetch was in flight
+        if (currentAgentKey !== requestedAgentKey) {
+          console.log('[Sync] Agent changed during poll, discarding stale response for:', requestedAgentKey);
+          return; // Discard stale data
+        }
         
         const serverMessages = data.messages;
         
