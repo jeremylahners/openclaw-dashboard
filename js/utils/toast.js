@@ -86,3 +86,8 @@ class ToastManager {
 
 // Global toast instance
 window.toast = new ToastManager();
+
+// Global helper function for backwards compatibility
+window.showToast = function(message, type = 'info', duration = 3000) {
+  return window.toast.show(message, type, duration);
+};
