@@ -4,6 +4,21 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>The Office - Team HQ</title>
+  
+  <!-- PWA Manifest -->
+  <link rel="manifest" href="/manifest.json">
+  
+  <!-- PWA Meta Tags -->
+  <meta name="theme-color" content="#0ea5e9">
+  <meta name="description" content="OpenClaw agent workspace dashboard">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Office">
+  
+  <!-- PWA Icons -->
+  <link rel="icon" href="/icons/icon-192.png" sizes="192x192">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/apexcharts@3.45.1/dist/apexcharts.min.js"></script>
   <link rel="stylesheet" href="css/all-styles.css">
@@ -1841,10 +1856,14 @@
       if (state.el) return state.el;
 
       const ts = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-      const emoji = selectedAgent?.dataset?.emoji || '🤖';
+      
+      // Get the correct emoji for THIS agent, not the currently selected one
+      const agentEl = document.querySelector(`.agent.${agentKey}`);
+      const emoji = agentEl?.dataset?.emoji || '🤖';
 
       const el = document.createElement('div');
       el.className = 'message-bubble them';
+      el.setAttribute('data-agent-key', agentKey); // Mark which agent this belongs to
       el.innerHTML = `
         <div class="bubble-avatar bot">${emoji}</div>
         <div class="bubble-content">
@@ -1886,16 +1905,18 @@
     function finalizeStreaming(agentKey) {
       const state = getStreamingState(agentKey);
       if (state.el) {
-        // Remove the streaming div - the message is now in chatMessagesCache
-        // and will be rendered properly by renderChatMessages or poll
-        state.el.remove();
+        // Only remove if this element is in the DOM
+        if (state.el.parentElement) {
+          state.el.remove();
+        }
       }
       state.el = null;
       state.text = '';
       state.finalized = false;
       
-      // Re-render from cache to show the proper message bubble
-      if (chatMessagesCache.length > 0) {
+      // Only re-render if we're currently viewing THIS agent
+      // Don't re-render if another agent finished while we're viewing someone else
+      if (currentAgentKey === agentKey && chatMessagesCache.length > 0) {
         renderChatMessages(chatMessagesCache);
       }
     }
@@ -2535,6 +2556,127 @@
           islaAgent.click();
         }
       }, 500);
+    }
+
+    // ============================================================
+    // PWA SERVICE WORKER & PUSH NOTIFICATIONS
+    // ============================================================
+
+    // VAPID Public Key (from config)
+    const VAPID_PUBLIC_KEY = 'BDN_XpBCR60xryFLfXVewyeWk5VwOOnKzUHx2k1ocUPpOIFixyalNdiuvOvVuT6PLEHGHIZ1SF-6VlImmcyC9nQ';
+
+    // Helper: Convert VAPID key to Uint8Array
+    function urlBase64ToUint8Array(base64String) {
+      const padding = '='.repeat((4 - base64String.length % 4) % 4);
+      const base64 = (base64String + padding)
+        .replace(/-/g, '+')
+        .replace(/_/g, '/');
+      const rawData = window.atob(base64);
+      const outputArray = new Uint8Array(rawData.length);
+      for (let i = 0; i < rawData.length; ++i) {
+        outputArray[i] = rawData.charCodeAt(i);
+      }
+      return outputArray;
+    }
+
+    // Check if PWA features are supported
+    if ('serviceWorker' in navigator && 'PushManager' in window) {
+      console.log('[PWA] Service worker and push notifications supported');
+      
+      // Register service worker
+      navigator.serviceWorker.register('/service-worker.js')
+        .then(async (registration) => {
+          console.log('[PWA] Service Worker registered:', registration.scope);
+          
+          // Check if already subscribed
+          const existingSubscription = await registration.pushManager.getSubscription();
+          
+          if (existingSubscription) {
+            console.log('[PWA] Already subscribed to push notifications');
+            return;
+          }
+          
+          // Wait a bit before requesting permission (better UX)
+          setTimeout(async () => {
+            try {
+              // Request notification permission
+              const permission = await Notification.requestPermission();
+              
+              if (permission === 'granted') {
+                console.log('[PWA] Notification permission granted');
+                
+                // Subscribe to push notifications
+                const subscription = await registration.pushManager.subscribe({
+                  userVisibleOnly: true,
+                  applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+                });
+                
+                console.log('[PWA] Push subscription created:', subscription.endpoint);
+                
+                // Send subscription to backend
+                const response = await fetch('/api/push/subscribe', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(subscription)
+                });
+                
+                const result = await response.json();
+                
+                if (result.ok) {
+                  console.log('[PWA] ✅ Push notifications enabled');
+                  showToast('Push notifications enabled! 🔔', 'success');
+                } else {
+                  console.error('[PWA] Failed to register subscription:', result.error);
+                  showToast('Failed to enable notifications', 'error');
+                }
+              } else {
+                console.log('[PWA] Notification permission denied');
+              }
+            } catch (err) {
+              console.error('[PWA] Notification setup failed:', err);
+            }
+          }, 2000); // Wait 2 seconds after page load
+        })
+        .catch((err) => {
+          console.error('[PWA] Service Worker registration failed:', err);
+        });
+      
+      // Listen for messages from service worker (e.g., notification clicks)
+      navigator.serviceWorker.addEventListener('message', (event) => {
+        console.log('[PWA] Message from service worker:', event.data);
+        
+        // Handle agent switch from notification click
+        if (event.data && event.data.type === 'SWITCH_AGENT') {
+          const agentKey = event.data.agentKey;
+          const agentElement = document.querySelector(`.agent.${agentKey}`);
+          
+          if (agentElement) {
+            agentElement.click();
+          }
+        }
+      });
+      
+      // Handle "beforeinstallprompt" event for PWA installation
+      let deferredPrompt;
+      window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        deferredPrompt = e;
+        
+        console.log('[PWA] Install prompt available');
+        
+        // Show custom "Install App" button (if you want to add UI for this)
+        // For now, users can install via browser menu
+      });
+      
+      // Track installation
+      window.addEventListener('appinstalled', () => {
+        console.log('[PWA] App installed successfully');
+        showToast('Office installed! 📱', 'success');
+        deferredPrompt = null;
+      });
+      
+    } else {
+      console.warn('[PWA] Service worker or push notifications not supported on this browser');
     }
   </script>
 </body>
