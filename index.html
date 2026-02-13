@@ -136,6 +136,13 @@
         <div class="agent-task">Ready</div>
       </div>
 
+      <div class="agent nova" data-name="Nova" data-role="HR Advisor" data-task="Ready to help" data-quote="The most caring thing is often the most direct thing." data-emoji="🌟">
+        <div class="avatar">🌟<div class="status-dot status-idle"></div><div class="unread-badge">💬</div></div>
+        <div class="agent-name">Nova</div>
+        <div class="agent-role">HR</div>
+        <div class="agent-task">Ready</div>
+      </div>
+
       <div class="agent isla" data-name="Isla" data-role="Chief of Staff" data-task="Team coordination" data-quote="Sycophants are useless. I'd rather be helpful than agreeable." data-emoji="🏝️">
         <div class="avatar">🏝️<div class="status-dot status-working"></div><div class="unread-badge">💬</div></div>
         <div class="agent-name">Isla</div>
@@ -159,6 +166,7 @@
       <div class="left-tab active" data-tab="priorities">🎯 Priorities</div>
       <div class="left-tab" data-tab="standup">📋 Standup</div>
       <div class="left-tab" data-tab="interactions">🔗 Activity</div>
+      <button class="settings-btn" id="settingsBtn" title="Notification Settings">⚙️</button>
     </div>
 
     <!-- Priorities Tab -->
@@ -300,6 +308,52 @@
       <div class="mobile-nav-emoji">🗺️</div>
       <div class="mobile-nav-name">Atlas</div>
     </button>
+    <button class="mobile-nav-item" data-agent="nova">
+      <div class="mobile-nav-emoji">🌟</div>
+      <div class="mobile-nav-name">Nova</div>
+    </button>
+  </div>
+
+  <!-- Settings Modal -->
+  <div class="settings-modal hidden" id="settingsModal">
+    <div class="settings-content">
+      <div class="settings-header">
+        <h2>⚙️ Notification Settings</h2>
+        <button class="settings-close" id="settingsClose">×</button>
+      </div>
+      
+      <div class="settings-body">
+        <div class="settings-section">
+          <label class="settings-toggle">
+            <input type="checkbox" id="notificationsEnabled" checked>
+            <span>Enable push notifications</span>
+          </label>
+          <div class="settings-help">
+            Receive notifications when agents respond
+          </div>
+        </div>
+
+        <div class="settings-section" id="agentTogglesSection">
+          <div class="settings-label">Notify me when these agents respond:</div>
+          <div class="agent-toggles" id="agentToggles">
+            <!-- Agent toggles will be inserted here -->
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <button class="btn-primary" id="testNotificationBtn">
+            🔔 Send Test Notification
+          </button>
+        </div>
+
+        <div class="settings-section">
+          <div class="settings-label">Push Status</div>
+          <div class="settings-status" id="pushStatus">
+            <span id="pushStatusText">Checking...</span>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
   
   <script src="config.js"></script>
@@ -1151,6 +1205,7 @@
       lena: { top: 140, right: 100 },
       val: { top: 270, right: 100 },
       atlas: { bottom: 90, right: 120 },
+      nova: { top: 170, left: 400 },
       isla: { bottom: -10 }
     };
 
@@ -2614,7 +2669,7 @@
                 console.log('[PWA] Push subscription created:', subscription.endpoint);
                 
                 // Send subscription to backend
-                const response = await fetch('/api/push/subscribe', {
+                const response = await fetch('/push/subscribe', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify(subscription)
@@ -2678,6 +2733,166 @@
     } else {
       console.warn('[PWA] Service worker or push notifications not supported on this browser');
     }
+
+    // ============================================================
+    // NOTIFICATION SETTINGS MODAL
+    // ============================================================
+
+    const settingsBtn = document.getElementById('settingsBtn');
+    const settingsModal = document.getElementById('settingsModal');
+    const settingsClose = document.getElementById('settingsClose');
+    const notificationsEnabled = document.getElementById('notificationsEnabled');
+    const agentTogglesContainer = document.getElementById('agentToggles');
+    const testNotificationBtn = document.getElementById('testNotificationBtn');
+    const pushStatusText = document.getElementById('pushStatusText');
+
+    // All agents list
+    const allAgents = [
+      { key: 'isla', emoji: '🏝️', name: 'Isla' },
+      { key: 'marcus', emoji: '🔧', name: 'Marcus' },
+      { key: 'harper', emoji: '🔍', name: 'Harper' },
+      { key: 'eli', emoji: '🏗️', name: 'Eli' },
+      { key: 'sage', emoji: '🔬', name: 'Sage' },
+      { key: 'julie', emoji: '📢', name: 'Julie' },
+      { key: 'dash', emoji: '🏃', name: 'Dash' },
+      { key: 'remy', emoji: '👨‍🍳', name: 'Remy' },
+      { key: 'lena', emoji: '💪', name: 'Lena' },
+      { key: 'val', emoji: '💰', name: 'Val' },
+      { key: 'atlas', emoji: '🗺️', name: 'Atlas' },
+      { key: 'nova', emoji: '🌟', name: 'Nova' }
+    ];
+
+    // Load notification settings from localStorage
+    function loadNotificationSettings() {
+      const settings = localStorage.getItem('notificationSettings');
+      if (settings) {
+        return JSON.parse(settings);
+      }
+      // Default: all enabled
+      return {
+        enabled: true,
+        agents: allAgents.map(a => a.key)
+      };
+    }
+
+    // Save notification settings to localStorage
+    function saveNotificationSettings(settings) {
+      localStorage.setItem('notificationSettings', JSON.stringify(settings));
+    }
+
+    // Initialize settings
+    let notificationSettings = loadNotificationSettings();
+
+    // Populate agent toggles
+    function renderAgentToggles() {
+      agentTogglesContainer.innerHTML = allAgents.map(agent => `
+        <label class="agent-toggle">
+          <input 
+            type="checkbox" 
+            data-agent="${agent.key}" 
+            ${notificationSettings.agents.includes(agent.key) ? 'checked' : ''}
+          >
+          <span class="agent-toggle-label">
+            <span class="agent-toggle-emoji">${agent.emoji}</span>
+            <span>${agent.name}</span>
+          </span>
+        </label>
+      `).join('');
+
+      // Add event listeners
+      agentTogglesContainer.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+        checkbox.addEventListener('change', (e) => {
+          const agentKey = e.target.dataset.agent;
+          if (e.target.checked) {
+            if (!notificationSettings.agents.includes(agentKey)) {
+              notificationSettings.agents.push(agentKey);
+            }
+          } else {
+            notificationSettings.agents = notificationSettings.agents.filter(k => k !== agentKey);
+          }
+          saveNotificationSettings(notificationSettings);
+        });
+      });
+    }
+
+    // Update push status
+    async function updatePushStatus() {
+      try {
+        const response = await fetch('/push/status');
+        const status = await response.json();
+        
+        if (status.ok && status.enabled) {
+          pushStatusText.innerHTML = `
+            ✅ Push notifications configured<br>
+            ${status.subscribers} device(s) subscribed
+          `;
+          pushStatusText.style.color = '#4ade80';
+        } else {
+          pushStatusText.innerHTML = '⚠️ Push notifications not configured';
+          pushStatusText.style.color = '#fbbf24';
+        }
+      } catch (err) {
+        pushStatusText.innerHTML = '❌ Failed to check status';
+        pushStatusText.style.color = '#f87171';
+      }
+    }
+
+    // Open settings modal
+    settingsBtn.addEventListener('click', () => {
+      settingsModal.classList.remove('hidden');
+      notificationsEnabled.checked = notificationSettings.enabled;
+      renderAgentToggles();
+      updatePushStatus();
+    });
+
+    // Close settings modal
+    settingsClose.addEventListener('click', () => {
+      settingsModal.classList.add('hidden');
+    });
+
+    // Click outside to close
+    settingsModal.addEventListener('click', (e) => {
+      if (e.target === settingsModal) {
+        settingsModal.classList.add('hidden');
+      }
+    });
+
+    // Toggle notifications on/off
+    notificationsEnabled.addEventListener('change', (e) => {
+      notificationSettings.enabled = e.target.checked;
+      saveNotificationSettings(notificationSettings);
+      
+      if (e.target.checked) {
+        showToast('Notifications enabled', 'success');
+      } else {
+        showToast('Notifications disabled', 'info');
+      }
+    });
+
+    // Test notification button
+    testNotificationBtn.addEventListener('click', async () => {
+      try {
+        testNotificationBtn.disabled = true;
+        testNotificationBtn.textContent = 'Sending...';
+        
+        const response = await fetch('/push/test', { method: 'POST' });
+        const result = await response.json();
+        
+        if (result.ok) {
+          showToast('Test notification sent! 🔔', 'success');
+        } else {
+          showToast('Failed to send test notification', 'error');
+        }
+      } catch (err) {
+        showToast('Error sending test notification', 'error');
+      } finally {
+        testNotificationBtn.disabled = false;
+        testNotificationBtn.textContent = '🔔 Send Test Notification';
+      }
+    });
+
+    // Initialize
+    renderAgentToggles();
   </script>
 </body>
 </html>

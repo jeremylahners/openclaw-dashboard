@@ -501,7 +501,7 @@
 
     .val { top: 270px; right: 100px; }
     .atlas { bottom: 90px; right: 120px; }
-    .nova { bottom: 90px; left: 120px; }
+    .nova { top: 170px; left: 400px; }
 
     .isla { bottom: -10px; left: 50%; transform: translateX(-50%); }
     .isla:hover { transform: translateX(-50%) scale(1.1); transition: transform 0.2s ease; }
