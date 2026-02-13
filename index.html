@@ -21,7 +21,7 @@
   
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/apexcharts@3.45.1/dist/apexcharts.min.js"></script>
-  <link rel="stylesheet" href="css/all-styles.css?v=5">
+  <link rel="stylesheet" href="css/all-styles.css?v=6">
   <link rel="stylesheet" href="css/toast.css?v=3">
   <link rel="stylesheet" href="css/loading.css?v=3">
 </head>
@@ -1641,8 +1641,8 @@
         return content !== 'NO_REPLY';
       });
       
-      console.log('[RENDER] Rendering', visibleMessages.length, 'messages (filtered from', messages.length, ')');
-      console.trace('[RENDER] Called from:');
+      console.log('[RENDER] Rendering', visibleMessages.length, 'messages for agent:', currentAgentKey);
+      console.log('[RENDER] Message preview:', visibleMessages.slice(-2).map(m => `${m.isBot ? 'Bot' : 'User'}: ${(m.content || '').substring(0, 50)}...`));
       if (visibleMessages.length === 0) {
         chatMessages.innerHTML = '<div style="text-align: center; color: #888; padding: 20px;">Start a conversation...</div>';
         return;
@@ -2078,6 +2078,9 @@
 
       currentAgentKey = agentKey;
 
+      // CRITICAL: Clear cache immediately to prevent showing stale data from previous agent
+      chatMessagesCache = [];
+
       // Load draft for new agent
       loadDraftForAgent(agentKey);
 
@@ -2090,6 +2093,8 @@
 
       chatMessages.innerHTML = '<div style="text-align: center; color: #666; padding: 20px;">Loading messages...</div>';
 
+      let gatewayLoaded = false;
+
       // Try loading history from Gateway first (most up-to-date)
       if (gwConnected) {
         try {
@@ -2097,6 +2102,9 @@
             sessionKey: agentSessionKey(agentKey),
             limit: 50
           });
+          
+          gatewayLoaded = true; // Mark that Gateway responded (even if empty)
+          
           // If we got gateway history and it has messages, show them
           if (history && history.messages && history.messages.length > 0) {
             const gwMessages = history.messages
@@ -2121,15 +2129,22 @@
             if (gwMessages.length > 0) {
               chatMessagesCache = gwMessages;
               renderChatMessages(gwMessages);
+            } else {
+              // Gateway returned but 0 messages - show empty state
+              chatMessages.innerHTML = '<div style="text-align: center; color: #666; padding: 20px;">Start a conversation...</div>';
             }
+          } else {
+            // Gateway returned but no messages - show empty state
+            chatMessages.innerHTML = '<div style="text-align: center; color: #666; padding: 20px;">Start a conversation...</div>';
           }
         } catch (e) {
           console.log('[GW] History fetch failed:', e.message || e);
+          gatewayLoaded = false; // Gateway failed, allow cache fallback
         }
       }
 
-      // If Gateway didn't load messages, try cache fallback
-      if (chatMessagesCache.length === 0) {
+      // ONLY use cache fallback if Gateway wasn't connected OR Gateway failed
+      if (!gatewayLoaded && chatMessagesCache.length === 0) {
         try {
           const response = await fetch(`${API_BASE}/chat/${agentKey}`);
           const data = await response.json();
