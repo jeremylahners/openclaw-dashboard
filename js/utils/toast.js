@@ -6,15 +6,32 @@
 class ToastManager {
   constructor() {
     this.container = null;
+    this.queue = [];
+    this.ready = false;
     this.init();
   }
 
   init() {
-    // Create toast container
+    // Wait for DOM to be ready before creating container
+    if (document.body) {
+      this.createContainer();
+    } else {
+      document.addEventListener('DOMContentLoaded', () => this.createContainer());
+    }
+  }
+
+  createContainer() {
     this.container = document.createElement('div');
     this.container.id = 'toast-container';
     this.container.className = 'toast-container';
     document.body.appendChild(this.container);
+    this.ready = true;
+
+    // Process any queued toasts
+    this.queue.forEach(({ message, type, duration }) => {
+      this.show(message, type, duration);
+    });
+    this.queue = [];
   }
 
   /**
@@ -24,6 +41,12 @@ class ToastManager {
    * @param {number} duration - Duration in ms (default: 3000)
    */
   show(message, type = 'info', duration = 3000) {
+    // Queue if not ready
+    if (!this.ready) {
+      this.queue.push({ message, type, duration });
+      return null;
+    }
+
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
     
@@ -84,7 +107,7 @@ class ToastManager {
   }
 }
 
-// Global toast instance
+// Global toast instance - initialize immediately
 window.toast = new ToastManager();
 
 // Global helper function for backwards compatibility
