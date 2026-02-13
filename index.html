@@ -1662,10 +1662,12 @@
         return;
       }
       
-      // Filter out NO_REPLY messages (agent-to-agent coordination)
+      // Filter out coordination signals and their streaming fragments
       const visibleMessages = messages.filter(m => {
+        if (!m.isBot) return true; // Never filter user messages
         const content = (m.content || '').trim();
-        return content !== 'NO_REPLY';
+        if (/^(NO_REPLY|NO_?|HEARTBEAT_OK)\s*$/i.test(content)) return false;
+        return true;
       });
       
       console.log('[RENDER] Rendering', visibleMessages.length, 'messages for agent:', forAgentKey, 'gen:', forGeneration);
@@ -2037,6 +2039,9 @@
     // Update streaming text - each delta is the full accumulated text, not a diff
     function updateStreamingText(agentKey, text) {
       const state = getStreamingState(agentKey);
+      // Only accept text at least as long as current — prevents the 'final' event's
+      // potentially shorter message from overwriting the full accumulated response
+      if (text.length < state.text.length) return;
       state.text = text;
       const el = getStreamingEl(agentKey);
       const textEl = el.querySelector('.streaming-text');
@@ -2145,32 +2150,48 @@
       // CRITICAL: Show loading state immediately - this is the ONLY thing visible until data arrives
       chatMessages.innerHTML = '<div style="text-align: center; color: #666; padding: 20px;">Loading messages...</div>';
 
-      let gatewayLoaded = false;
       let messagesRendered = false;
 
-      // Try loading history from Gateway first (most up-to-date)
-      if (gwConnected) {
+      // Load from server cache FIRST — it has correct isBot flags
+      try {
+        const response = await fetch(`${API_BASE}/chat/${agentKey}`);
+        const data = await response.json();
+
+        // RACE CONDITION FIX: Check BOTH generation AND currentAgentKey
+        if (chatLoadGeneration !== thisGeneration || currentAgentKey !== agentKey) {
+          console.log('[LOAD] Stale after cache fetch - discarding');
+          return;
+        }
+
+        if (data.ok && data.messages && data.messages.length > 0) {
+          setAgentCache(agentKey, data.messages);
+          chatMessagesCache = data.messages;
+          renderChatMessages(data.messages, agentKey, thisGeneration);
+          messagesRendered = true;
+        }
+      } catch (e) {
+        console.log('Cache fetch failed:', e);
+      }
+
+      // Only fall back to Gateway history if server cache was empty
+      if (!messagesRendered && gwConnected) {
         try {
           const history = await gwRequest('chat.history', {
             sessionKey: agentSessionKey(agentKey),
             limit: 50
           });
-          
-          gatewayLoaded = true; // Mark that Gateway responded (even if empty)
-          
-          // RACE CONDITION FIX: Check BOTH generation AND currentAgentKey
+
           if (chatLoadGeneration !== thisGeneration || currentAgentKey !== agentKey) {
-            console.log('[LOAD] Stale after Gateway request - gen:', thisGeneration, '/', chatLoadGeneration, 'agent:', agentKey, '/', currentAgentKey);
-            return; // Discard stale data - another loadAgentChat will handle the new agent
+            console.log('[LOAD] Stale after Gateway request - discarding');
+            return;
           }
-          
-          // If we got gateway history and it has messages, show them
+
           if (history && history.messages && history.messages.length > 0) {
             const gwMessages = history.messages
-              .filter(m => m.role === 'user' || m.role === 'assistant')
+              .filter(m => m.role === 'user' || m.role === 'assistant' || m.role === 'model' || m.role === 'bot')
               .map(m => {
                 const content = extractMessageText(m);
-                const isBot = m.role === 'assistant';
+                const isBot = m.role !== 'user';
                 return {
                   id: m.id || `gw-${Date.now()}-${Math.random()}`,
                   content,
@@ -2186,52 +2207,20 @@
               .filter(m => m.content.trim());
 
             if (gwMessages.length > 0) {
-              // Update both caches
               setAgentCache(agentKey, gwMessages);
               chatMessagesCache = gwMessages;
               renderChatMessages(gwMessages, agentKey, thisGeneration);
               messagesRendered = true;
             }
           }
-          
-          // If Gateway returned but no messages, show empty state
-          if (!messagesRendered) {
-            chatMessages.innerHTML = '<div style="text-align: center; color: #666; padding: 20px;">Start a conversation...</div>';
-            messagesRendered = true;
-          }
         } catch (e) {
           console.log('[GW] History fetch failed:', e.message || e);
-          gatewayLoaded = false; // Gateway failed, allow cache fallback
         }
       }
 
-      // ONLY use cache fallback if Gateway wasn't connected OR Gateway failed
-      if (!gatewayLoaded && !messagesRendered) {
-        try {
-          const response = await fetch(`${API_BASE}/chat/${agentKey}`);
-          const data = await response.json();
-          
-          // RACE CONDITION FIX: Check BOTH generation AND currentAgentKey
-          if (chatLoadGeneration !== thisGeneration || currentAgentKey !== agentKey) {
-            console.log('[LOAD] Stale after cache fetch - discarding');
-            return; // Discard stale data
-          }
-          
-          if (data.ok && data.messages && data.messages.length > 0) {
-            // Update both caches
-            setAgentCache(agentKey, data.messages);
-            chatMessagesCache = data.messages;
-            renderChatMessages(data.messages, agentKey, thisGeneration);
-            messagesRendered = true;
-          }
-        } catch (e) {
-          console.log('Cache fetch failed:', e);
-        }
-        
-        // Show empty state if nothing rendered
-        if (!messagesRendered && chatLoadGeneration === thisGeneration && currentAgentKey === agentKey) {
-          chatMessages.innerHTML = '<div style="text-align: center; color: #666; padding: 20px;">Start a conversation...</div>';
-        }
+      // Show empty state if nothing rendered
+      if (!messagesRendered && chatLoadGeneration === thisGeneration && currentAgentKey === agentKey) {
+        chatMessages.innerHTML = '<div style="text-align: center; color: #666; padding: 20px;">Start a conversation...</div>';
       }
 
       // Final staleness check before setting up streaming callbacks
@@ -2279,6 +2268,13 @@
           console.log('[FINAL] onFinal called for:', callbackAgentKey, 'text length:', state.text?.length || 0, 'finalized:', state.finalized);
           
           if (state.text && !state.finalized) {
+            // Don't save coordination signals
+            const trimmed = state.text.trim();
+            if (/^(NO_REPLY|NO_?|HEARTBEAT_OK)\s*$/i.test(trimmed)) {
+              state.finalized = true;
+              finalizeStreaming(callbackAgentKey, callbackGeneration);
+              return;
+            }
             state.finalized = true; // Prevent double processing
             console.log('[FINAL] Saving agent reply for:', callbackAgentKey);
             
@@ -2752,6 +2748,17 @@
         const currentFingerprints = new Set(currentCache.map(getFingerprint));
         const serverFingerprints = serverMessages.map(getFingerprint);
         
+        // Skip re-render if counts match and last message content is the same
+        // This prevents the "ghost flash" when Gateway history and server cache
+        // have the same messages but different IDs/formatting
+        if (serverMessages.length === currentCache.length && serverMessages.length > 0) {
+          const lastServer = (serverMessages[serverMessages.length - 1].content || '').trim();
+          const lastLocal = (currentCache[currentCache.length - 1].content || '').trim();
+          if (lastServer === lastLocal) {
+            return; // Same content, no re-render needed
+          }
+        }
+
         // Check if server has messages we don't have (by content, not ID)
         let hasNewContent = false;
         for (const fp of serverFingerprints) {
@@ -2760,10 +2767,10 @@
             break;
           }
         }
-        
+
         // Only re-render if server has genuinely NEW content we don't have
         // Don't overwrite if we have more messages than server (e.g., Gateway history has more)
-        if (hasNewContent && serverMessages.length >= currentCache.length) {
+        if (hasNewContent && serverMessages.length > currentCache.length) {
           // Final staleness check before rendering - must still match
           if (currentAgentKey !== requestedAgentKey || chatLoadGeneration !== requestedGeneration) {
             console.log('[Sync] Stale before render, discarding');
@@ -2787,9 +2794,14 @@
       // Initialize with current message IDs from the CURRENT agent's cache
       const currentCache = currentAgentKey ? getAgentCache(currentAgentKey) : [];
       lastMessageIds = new Set(currentCache.map(m => m.id));
-      // Poll every 3 seconds for cross-device sync
-      chatPollInterval = setInterval(pollChatMessages, 3000);
-      console.log('[Sync] Chat polling started for:', currentAgentKey);
+      // Delay first poll by 5s to let Gateway history fully render before polling can interfere
+      const startGeneration = chatLoadGeneration;
+      setTimeout(() => {
+        // Only start if we're still on the same agent load (user didn't switch)
+        if (chatLoadGeneration !== startGeneration) return;
+        chatPollInterval = setInterval(pollChatMessages, 3000);
+        console.log('[Sync] Chat polling started for:', currentAgentKey);
+      }, 5000);
     }
 
     // Stop chat polling
