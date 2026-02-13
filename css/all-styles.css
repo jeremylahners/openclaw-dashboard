@@ -481,6 +481,7 @@
     .lena .avatar { background: linear-gradient(135deg, #22c55e, #16a34a); }
     .val .avatar { background: linear-gradient(135deg, #22d3ee, #06b6d4); }
     .atlas .avatar { background: linear-gradient(135deg, #8b5cf6, #7c3aed); }
+    .nova .avatar { background: linear-gradient(135deg, #fbbf24, #f59e0b); }
     .dash .avatar { background: linear-gradient(135deg, #a78bfa, #c084fc); }
 
     /* Positions - using CSS custom properties for animation */
@@ -500,6 +501,7 @@
 
     .val { top: 270px; right: 100px; }
     .atlas { bottom: 90px; right: 120px; }
+    .nova { bottom: 90px; left: 120px; }
 
     .isla { bottom: -10px; left: 50%; transform: translateX(-50%); }
     .isla:hover { transform: translateX(-50%) scale(1.1); transition: transform 0.2s ease; }
@@ -1744,3 +1746,215 @@
       background: linear-gradient(90deg, transparent, #333, transparent);
       margin: 15px 0;
     }
+
+/* ===================================
+   Settings Modal & Notification Settings
+   =================================== */
+
+.settings-btn {
+  background: transparent;
+  border: none;
+  color: #888;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 8px 12px;
+  margin-left: auto;
+  transition: color 0.2s, transform 0.2s;
+}
+
+.settings-btn:hover {
+  color: #0ea5e9;
+  transform: rotate(90deg);
+}
+
+.settings-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  backdrop-filter: blur(4px);
+}
+
+.settings-modal.hidden {
+  display: none;
+}
+
+.settings-content {
+  background: #1a1a2e;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 500px;
+  max-height: 80vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+
+.settings-header {
+  padding: 20px;
+  border-bottom: 1px solid #333;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.settings-header h2 {
+  margin: 0;
+  font-size: 20px;
+  color: #fff;
+}
+
+.settings-close {
+  background: transparent;
+  border: none;
+  color: #888;
+  font-size: 32px;
+  cursor: pointer;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s;
+}
+
+.settings-close:hover {
+  color: #fff;
+}
+
+.settings-body {
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.settings-section {
+  margin-bottom: 24px;
+}
+
+.settings-toggle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  font-size: 16px;
+  color: #fff;
+}
+
+.settings-toggle input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+  accent-color: #0ea5e9;
+}
+
+.settings-help {
+  font-size: 13px;
+  color: #888;
+  margin-top: 8px;
+  margin-left: 32px;
+}
+
+.settings-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #aaa;
+  margin-bottom: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.agent-toggles {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.agent-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #252540;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.agent-toggle:hover {
+  background: #2a2a50;
+}
+
+.agent-toggle input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: #0ea5e9;
+}
+
+.agent-toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  cursor: pointer;
+  font-size: 14px;
+  color: #ccc;
+}
+
+.agent-toggle-emoji {
+  font-size: 16px;
+}
+
+.btn-primary {
+  width: 100%;
+  padding: 12px 24px;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.btn-primary:active {
+  transform: translateY(0);
+}
+
+.settings-status {
+  padding: 12px;
+  background: #252540;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #ccc;
+}
+
+#pushStatusText {
+  display: block;
+}
+
+/* Mobile adjustments */
+@media (max-width: 768px) {
+  .settings-content {
+    width: 95%;
+    max-height: 90vh;
+  }
+  
+  .agent-toggles {
+    grid-template-columns: 1fr;
+  }
+}
