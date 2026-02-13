@@ -1666,7 +1666,7 @@
       const visibleMessages = messages.filter(m => {
         if (!m.isBot) return true; // Never filter user messages
         const content = (m.content || '').trim();
-        if (/^(NO_REPLY|NO_?|HEARTBEAT_OK)\s*$/i.test(content)) return false;
+        if (/^(NO_REPLY|NO_?|HEARTBEAT_OK|HEARTBEAT_?|ANNOUNCE_SKIP|ANNOUNCE_?)\s*$/i.test(content)) return false;
         return true;
       });
       
@@ -2270,7 +2270,7 @@
           if (state.text && !state.finalized) {
             // Don't save coordination signals
             const trimmed = state.text.trim();
-            if (/^(NO_REPLY|NO_?|HEARTBEAT_OK)\s*$/i.test(trimmed)) {
+            if (/^(NO_REPLY|NO_?|HEARTBEAT_OK|HEARTBEAT_?|ANNOUNCE_SKIP|ANNOUNCE_?)\s*$/i.test(trimmed)) {
               state.finalized = true;
               finalizeStreaming(callbackAgentKey, callbackGeneration);
               return;
@@ -2504,10 +2504,15 @@
         timestamp: Date.now(),
         timestampFormatted: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
       };
-      // Update BOTH caches
+      // Update BOTH caches (with dedupe — Gateway echo or retry may duplicate)
       const agentCache = getAgentCache(currentAgentKey);
-      agentCache.push(userMessage);
-      chatMessagesCache.push(userMessage);
+      const lastMsg = agentCache[agentCache.length - 1];
+      if (lastMsg && !lastMsg.isBot && lastMsg.content === text && (Date.now() - lastMsg.timestamp < 10000)) {
+        // Skip duplicate user message
+      } else {
+        agentCache.push(userMessage);
+        chatMessagesCache.push(userMessage);
+      }
 
       // Save to server cache (for cross-device sync) - cache only, no gateway send
       fetch(`${API_BASE}/chat/${currentAgentKey}`, {
