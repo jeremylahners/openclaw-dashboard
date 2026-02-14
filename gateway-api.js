@@ -3,6 +3,8 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const webpush = require('web-push');
+const { WebSocketServer } = require('ws');
+const chatDb = require('./db.js');
 
 // Load config
 const config = require('./config.js');
@@ -10,7 +12,6 @@ const config = require('./config.js');
 const MEMORY_DIR = path.join(__dirname, '..', 'memory', 'agents');
 const STATUS_FILE = path.join(__dirname, '..', 'memory', 'agent-status.json');
 const INTERACTIONS_FILE = path.join(__dirname, '..', 'memory', 'agent-interactions.json');
-const MESSAGES_FILE = path.join(__dirname, 'messages.json');
 const ACTION_ITEMS_FILE = path.join(__dirname, 'action-items.json');
 const PUSH_SUBSCRIPTIONS_FILE = path.join(__dirname, 'push-subscriptions.json');
 const STANDUP_FILE = path.join(__dirname, 'standup.json');
@@ -290,43 +291,6 @@ function saveActionItems(items) {
   }
 }
 
-// Load messages cache
-function loadMessages() {
-  try {
-    if (fs.existsSync(MESSAGES_FILE)) {
-      return JSON.parse(fs.readFileSync(MESSAGES_FILE, 'utf-8'));
-    }
-  } catch (e) {
-    console.error('Failed to load messages:', e.message);
-  }
-  return {};
-}
-
-// Save messages cache
-function saveMessages(messages) {
-  try {
-    fs.writeFileSync(MESSAGES_FILE, JSON.stringify(messages, null, 2));
-  } catch (e) {
-    console.error('Failed to save messages:', e.message);
-  }
-}
-
-// Add message to cache
-function addMessage(agentKey, message) {
-  const messages = loadMessages();
-  if (!messages[agentKey]) {
-    messages[agentKey] = [];
-  }
-  messages[agentKey].push(message);
-  saveMessages(messages);
-}
-
-// Get messages for an agent
-function getMessages(agentKey) {
-  const messages = loadMessages();
-  return messages[agentKey] || [];
-}
-
 // Log interaction
 function logInteraction(from, to, topic, type = 'message') {
   const interactions = loadInteractions();
@@ -440,120 +404,55 @@ const server = http.createServer(async (req, res) => {
     }
   }
   
-  // Chat - get messages from cache
+  // Chat v2: Get messages from SQLite
   else if (req.url.startsWith('/chat/') && req.method === 'GET') {
     const agentKey = req.url.split('/')[2];
-    
     if (!agentSessions[agentKey]) {
       res.statusCode = 404;
       res.end(JSON.stringify({ ok: false, error: 'Agent not found' }));
       return;
     }
-    
-    // Get messages from cache
-    const messages = getMessages(agentKey);
-    res.end(JSON.stringify({ ok: true, messages }));
+    const messages = chatDb.getMessages(agentKey);
+    res.end(JSON.stringify({ ok: true, messages: messages.map(formatMessageForClient) }));
   }
   
-  // Chat - send message via Gateway
-  // Chat POST — cache only, message delivery handled by frontend WebSocket
+  // Chat v2: Commit a message to SQLite and broadcast
   else if (req.url.startsWith('/chat/') && req.method === 'POST') {
     const agentKey = req.url.split('/')[2];
-
     let body = '';
     req.on('data', chunk => body += chunk);
     req.on('end', () => {
       try {
-        const { message } = JSON.parse(body);
-        if (!message) {
+        const { content, role, idempotencyKey, timestamp } = JSON.parse(body);
+        if (!content || !role) {
           res.statusCode = 400;
-          res.end(JSON.stringify({ error: 'Missing message' }));
+          res.end(JSON.stringify({ ok: false, error: 'Missing content or role' }));
           return;
         }
-
         if (!agentSessions[agentKey]) {
           res.statusCode = 404;
           res.end(JSON.stringify({ ok: false, error: 'Agent not found' }));
           return;
         }
 
-        // Store user message in cache (for cross-device sync)
-        const userMessage = {
-          id: `user-${Date.now()}`,
-          content: message,
-          author: 'Jeremy',
-          authorId: 'user',
-          isBot: false,
-          timestamp: Date.now(),
-          timestampFormatted: new Date().toLocaleTimeString('en-US', {
-            hour: '2-digit',
-            minute: '2-digit'
-          })
-        };
-        addMessage(agentKey, userMessage);
+        const ts = timestamp || Date.now();
+        const result = chatDb.addMessage(agentKey, role, content, ts, idempotencyKey || null);
 
-        res.end(JSON.stringify({ ok: true, message: 'Message cached' }));
-      } catch (e) {
-        res.statusCode = 400;
-        res.end(JSON.stringify({ error: e.message }));
-      }
-    });
-    return;
-  }
-  
-  // Agent reply - save agent response to messages cache (for cross-device sync)
-  else if (req.url.match(/^\/messages\/\w+\/agent-reply$/) && req.method === 'POST') {
-    const agentKey = req.url.split('/')[2];
-    
-    let body = '';
-    req.on('data', chunk => body += chunk);
-    req.on('end', () => {
-      try {
-        const { content } = JSON.parse(body);
-        if (!content) {
-          res.statusCode = 400;
-          res.end(JSON.stringify({ ok: false, error: 'Missing content' }));
-          return;
+        if (!result.duplicate) {
+          const clientMsg = formatMessageForClient({
+            seq: result.seq, agent: agentKey, role, content, timestamp: ts
+          });
+          broadcastMessage(agentKey, clientMsg);
+
+          // Push notification for agent replies
+          if (role === 'assistant') {
+            sendPushNotification(agentKey, content).catch(err => {
+              console.error(`Push notification failed for ${agentKey}:`, err.message);
+            });
+          }
         }
-        
-        // Dedupe: Check if same content was added in last 5 seconds
-        const messages = getMessages(agentKey);
-        const fiveSecondsAgo = Date.now() - 5000;
-        const recentDupe = messages.find(m => 
-          m.isBot && 
-          m.timestamp > fiveSecondsAgo && 
-          m.content === content
-        );
-        
-        if (recentDupe) {
-          console.log(`⏭️ Skipping duplicate agent reply for ${agentKey}`);
-          res.end(JSON.stringify({ ok: true, message: 'Duplicate skipped' }));
-          return;
-        }
-        
-        // Store agent response in cache
-        const agentMessage = {
-          id: `agent-${Date.now()}`,
-          content: content,
-          author: agentKey.charAt(0).toUpperCase() + agentKey.slice(1),
-          authorId: agentKey,
-          isBot: true,
-          timestamp: Date.now(),
-          timestampFormatted: new Date().toLocaleTimeString('en-US', {
-            hour: '2-digit',
-            minute: '2-digit'
-          })
-        };
-        addMessage(agentKey, agentMessage);
-        
-        console.log(`📬 Agent reply cached for ${agentKey}: ${content.substring(0, 50)}...`);
-        
-        // 🔔 Send push notification for agent response
-        sendPushNotification(agentKey, content).catch(err => {
-          console.error(`Push notification failed for ${agentKey}:`, err.message);
-        });
-        
-        res.end(JSON.stringify({ ok: true, message: 'Agent reply cached' }));
+
+        res.end(JSON.stringify({ ok: true, seq: result.seq, duplicate: result.duplicate }));
       } catch (e) {
         res.statusCode = 400;
         res.end(JSON.stringify({ ok: false, error: e.message }));
@@ -981,3 +880,65 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`🔗 Gateway: ${GATEWAY_URL}`);
   console.log(`📡 Connected to ${Object.keys(agentSessions).length} agents`);
 });
+
+// --- Chat v2: WebSocket server for frontend push ---
+const wss = new WebSocketServer({ server });
+
+// Track connected clients and their subscriptions
+const wsClients = new Set();
+
+wss.on('connection', (ws) => {
+  const client = { ws, subscribedAgent: null };
+  wsClients.add(client);
+  console.log('[WS-Chat] Client connected, total:', wsClients.size);
+
+  ws.on('message', (data) => {
+    let msg;
+    try { msg = JSON.parse(data); } catch { return; }
+
+    if (msg.type === 'subscribe' && msg.agent && agentSessions[msg.agent]) {
+      client.subscribedAgent = msg.agent;
+      const messages = chatDb.getMessages(msg.agent);
+      ws.send(JSON.stringify({
+        type: 'history',
+        agent: msg.agent,
+        messages: messages.map(formatMessageForClient)
+      }));
+      console.log('[WS-Chat] Client subscribed to:', msg.agent, '- sent', messages.length, 'messages');
+    }
+
+    if (msg.type === 'unsubscribe') {
+      client.subscribedAgent = null;
+    }
+  });
+
+  ws.on('close', () => {
+    wsClients.delete(client);
+    console.log('[WS-Chat] Client disconnected, total:', wsClients.size);
+  });
+});
+
+function broadcastMessage(agent, message) {
+  for (const client of wsClients) {
+    if (client.subscribedAgent === agent && client.ws.readyState === 1) {
+      client.ws.send(JSON.stringify({
+        type: 'message_committed',
+        agent,
+        message
+      }));
+    }
+  }
+}
+
+function formatMessageForClient(row) {
+  return {
+    seq: row.seq,
+    agent: row.agent,
+    content: row.content,
+    isBot: row.role === 'assistant',
+    author: row.role === 'user' ? 'Jeremy' : (row.agent.charAt(0).toUpperCase() + row.agent.slice(1)),
+    authorId: row.role === 'user' ? 'user' : row.agent,
+    timestamp: row.timestamp,
+    timestampFormatted: new Date(row.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+  };
+}
