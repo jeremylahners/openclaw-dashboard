@@ -461,6 +461,39 @@ const server = http.createServer(async (req, res) => {
     return;
   }
   
+  // Agent custom tab data
+  else if (req.url.match(/^\/agent-data\/[a-z]+\/[a-z-]+$/) && req.method === 'GET') {
+    const parts = req.url.split('/');
+    const agentKey = parts[2];
+    const tabId = parts[3];
+
+    if (!agentSessions[agentKey]) {
+      res.statusCode = 404;
+      res.end(JSON.stringify({ ok: false, error: 'Agent not found' }));
+      return;
+    }
+
+    const basePath = path.join(__dirname, '..', 'files', 'agents', agentKey);
+    const jsonPath = path.join(basePath, `${tabId}.json`);
+    const mdPath = path.join(basePath, `${tabId}.md`);
+
+    try {
+      if (fs.existsSync(jsonPath)) {
+        const data = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+        res.end(JSON.stringify({ ok: true, format: 'json', data }));
+      } else if (fs.existsSync(mdPath)) {
+        const content = fs.readFileSync(mdPath, 'utf8');
+        res.end(JSON.stringify({ ok: true, format: 'markdown', content }));
+      } else {
+        res.end(JSON.stringify({ ok: true, empty: true }));
+      }
+    } catch (e) {
+      res.statusCode = 500;
+      res.end(JSON.stringify({ ok: false, error: e.message }));
+    }
+    return;
+  }
+
   // Interactions
   else if (req.url === '/interactions/active') {
     const interactions = loadInteractions();
