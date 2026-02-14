@@ -1733,6 +1733,15 @@
     const streamingState = new Map(); // agentKey -> { el, text }
     const unreadCounts = new Map(); // agentKey -> number
 
+    // Track last known seq per agent for reconciliation
+    function getLastSeq(agentKey) {
+      const cache = messageCache.get(agentKey);
+      if (!cache || cache.length === 0) return 0;
+      const realMessages = cache.filter(m => !m._optimistic);
+      if (realMessages.length === 0) return 0;
+      return realMessages[realMessages.length - 1].seq;
+    }
+
     // Chat v2: WebSocket to backend for message push
     let chatWs = null;
     let chatWsReconnectTimer = null;
@@ -1750,7 +1759,8 @@
         document.getElementById('wsStatus').style.color = '#22c55e';
         if (currentAgentKey) {
           console.log('[Chat-WS] Subscribing to', currentAgentKey);
-          chatWs.send(JSON.stringify({ type: 'subscribe', agent: currentAgentKey }));
+          const lastSeq = getLastSeq(currentAgentKey);
+          chatWs.send(JSON.stringify({ type: 'subscribe', agent: currentAgentKey, lastSeq }));
         }
       };
 
@@ -1762,8 +1772,16 @@
           handleHistory(msg.agent, msg.messages);
         }
 
+        if (msg.type === 'history_update') {
+          handleHistoryUpdate(msg.agent, msg.messages);
+        }
+
         if (msg.type === 'message_committed') {
           handleNewMessage(msg.agent, msg.message);
+        }
+
+        if (msg.type === 'sync_update') {
+          handleHistoryUpdate(msg.agent, msg.messages);
         }
       };
 
@@ -1779,10 +1797,75 @@
 
     chatWsConnect();
 
+    // Periodic reconciliation — check all agents for missed messages every 30s
+    function reconcileAllAgents() {
+      if (!chatWs || chatWs.readyState !== 1) return;
+
+      const agents = {};
+      for (const [agent, cache] of messageCache) {
+        agents[agent] = getLastSeq(agent);
+      }
+
+      if (Object.keys(agents).length > 0) {
+        chatWs.send(JSON.stringify({ type: 'sync', agents }));
+      }
+    }
+
+    setInterval(reconcileAllAgents, 30000);
+
+    // Reconcile immediately when tab becomes visible (e.g., switching back from iPad app)
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        // Small delay to let WebSocket reconnect if it dropped
+        setTimeout(() => {
+          reconcileAllAgents();
+          // Also re-subscribe to current agent to get fresh state
+          if (currentAgentKey && chatWs && chatWs.readyState === 1) {
+            const lastSeq = getLastSeq(currentAgentKey);
+            chatWs.send(JSON.stringify({ type: 'subscribe', agent: currentAgentKey, lastSeq }));
+          }
+        }, 500);
+      }
+    });
+
     function handleHistory(agent, messages) {
       messageCache.set(agent, messages);
       if (agent === currentAgentKey) {
         renderAllMessages(agent, messages);
+      }
+    }
+
+    // Incremental history update — append only new messages
+    function handleHistoryUpdate(agent, messages) {
+      if (!messageCache.has(agent)) messageCache.set(agent, []);
+      const cache = messageCache.get(agent);
+
+      let added = 0;
+      for (const msg of messages) {
+        // Skip if we already have this seq
+        if (cache.some(m => !m._optimistic && m.seq === msg.seq)) continue;
+
+        // Replace optimistic message if content matches
+        const optIdx = cache.findIndex(m => m._optimistic && m.content === msg.content);
+        if (optIdx !== -1) {
+          cache[optIdx] = msg;
+        } else {
+          cache.push(msg);
+          added++;
+        }
+      }
+
+      // Sort by seq to maintain order
+      if (added > 0) {
+        cache.sort((a, b) => (a.seq || 0) - (b.seq || 0));
+
+        if (agent === currentAgentKey) {
+          renderAllMessages(agent, cache);
+        } else {
+          unreadCounts.set(agent, (unreadCounts.get(agent) || 0) + added);
+          const agentEl = document.querySelector(`.agent.${agent}`);
+          if (agentEl) agentEl.classList.add('has-unread');
+        }
       }
     }
 
@@ -2267,7 +2350,8 @@
 
       // Subscribe via chat WebSocket — or fall back to REST if not connected
       if (chatWs && chatWs.readyState === 1) {
-        chatWs.send(JSON.stringify({ type: 'subscribe', agent: agentKey }));
+        const lastSeq = getLastSeq(agentKey);
+        chatWs.send(JSON.stringify({ type: 'subscribe', agent: agentKey, lastSeq }));
       } else {
         // WebSocket not ready yet — fetch via REST API as fallback
         console.log('[Chat] WS not ready, fetching via REST for', agentKey);
