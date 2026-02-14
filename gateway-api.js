@@ -3,7 +3,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const webpush = require('web-push');
-const { WebSocketServer } = require('ws');
+const { WebSocketServer, WebSocket } = require('ws');
 const chatDb = require('./db.js');
 
 // Load config
@@ -36,6 +36,199 @@ const agentSessions = {
   atlas: "agent:atlas:webchat:user",
   nova: "agent:nova:webchat:user"
 };
+
+// Reverse lookup: session key -> agent name
+const sessionToAgent = {};
+for (const [agent, session] of Object.entries(agentSessions)) {
+  sessionToAgent[session] = agent;
+}
+
+// ============================================================
+// GATEWAY WEBSOCKET CLIENT (server-owned connection)
+// ============================================================
+
+let gwSocket = null;
+let gwConnected = false;
+let gwRequestId = 0;
+const gwPendingRequests = new Map(); // id -> { resolve, reject }
+const streamingAccumulator = new Map(); // sessionKey -> accumulated text
+
+function gwNextId() { return `req-${++gwRequestId}`; }
+
+function gwConnect() {
+  if (gwSocket && gwSocket.readyState <= WebSocket.CONNECTING) return;
+
+  const url = `ws://127.0.0.1:${config.gatewayPort}`;
+  console.log('[GW] Connecting to', url);
+  gwSocket = new WebSocket(url, {
+    headers: { Origin: `http://127.0.0.1:${config.gatewayPort}` }
+  });
+
+  gwSocket.on('open', () => {
+    console.log('[GW] WebSocket open, sending connect...');
+    const connId = gwNextId();
+    gwSendRaw({
+      type: 'req', id: connId, method: 'connect',
+      params: {
+        minProtocol: 3, maxProtocol: 3,
+        client: { id: 'webchat-ui', version: '1.0.0', platform: 'web', mode: 'ui' },
+        role: 'operator',
+        scopes: ['operator.read', 'operator.write'],
+        auth: { token: GATEWAY_TOKEN }
+      }
+    });
+    gwPendingRequests.set(connId, {
+      resolve: (payload) => {
+        gwConnected = true;
+        console.log('[GW] Connected!', payload.server?.version);
+      },
+      reject: (err) => console.error('[GW] Connect failed:', err)
+    });
+  });
+
+  gwSocket.on('message', (data) => {
+    let frame;
+    try { frame = JSON.parse(data.toString()); } catch { return; }
+
+    // Response to a request
+    if (frame.type === 'res' && frame.id) {
+      const pending = gwPendingRequests.get(frame.id);
+      if (pending) {
+        gwPendingRequests.delete(frame.id);
+        if (frame.ok) pending.resolve(frame.payload);
+        else pending.reject(frame.error);
+      }
+    }
+
+    // Streaming chat event
+    if (frame.type === 'event' && frame.event === 'chat') {
+      handleGatewayChatEvent(frame.payload);
+    }
+  });
+
+  gwSocket.on('close', () => {
+    gwConnected = false;
+    console.log('[GW] WebSocket closed, reconnecting in 3s...');
+    setTimeout(gwConnect, 3000);
+  });
+
+  gwSocket.on('error', (e) => {
+    console.error('[GW] WebSocket error:', e.message);
+  });
+}
+
+function gwSendRaw(data) {
+  if (gwSocket && gwSocket.readyState === WebSocket.OPEN) {
+    gwSocket.send(JSON.stringify(data));
+  }
+}
+
+function gwRequest(method, params = {}) {
+  return new Promise((resolve, reject) => {
+    if (!gwSocket || gwSocket.readyState !== WebSocket.OPEN) {
+      reject(new Error('Gateway WebSocket not connected'));
+      return;
+    }
+    const id = gwNextId();
+    gwPendingRequests.set(id, { resolve, reject });
+    gwSendRaw({ type: 'req', id, method, params });
+    setTimeout(() => {
+      if (gwPendingRequests.has(id)) {
+        gwPendingRequests.delete(id);
+        reject(new Error('Gateway request timeout'));
+      }
+    }, 60000);
+  });
+}
+
+// Extract text from an OpenClaw message object
+// Messages have shape: { role, content: string | [{ type: "text", text: "..." }, ...], timestamp }
+function extractMessageText(message) {
+  if (!message) return '';
+  if (typeof message === 'string') return message;
+  const content = message.content;
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content
+      .filter(item => item.type === 'text' && typeof item.text === 'string')
+      .map(item => item.text)
+      .join('\n');
+  }
+  if (typeof message.text === 'string') return message.text;
+  return '';
+}
+
+const NOISE_REPLIES = /^(NO_REPLY|NO_?|HEARTBEAT_OK|HEARTBEAT_?|ANNOUNCE_SKIP|ANNOUNCE_?)\s*$/i;
+
+function handleGatewayChatEvent(payload) {
+  const sessionKey = payload.sessionKey;
+  const agent = sessionToAgent[sessionKey];
+  if (!agent) return; // unknown session
+
+  if (payload.state === 'delta' && payload.message) {
+    const text = extractMessageText(payload.message);
+    if (!text) return;
+    streamingAccumulator.set(sessionKey, text);
+    broadcastStreaming(agent, { type: 'stream_delta', agent, text });
+  }
+
+  else if (payload.state === 'final') {
+    // Final event may carry the complete message
+    if (payload.message) {
+      const text = extractMessageText(payload.message);
+      if (text) streamingAccumulator.set(sessionKey, text);
+    }
+
+    const accumulatedText = streamingAccumulator.get(sessionKey) || '';
+    streamingAccumulator.delete(sessionKey);
+
+    // Filter noise replies
+    if (!accumulatedText || NOISE_REPLIES.test(accumulatedText.trim())) {
+      broadcastStreaming(agent, { type: 'stream_final', agent, text: '', filtered: true });
+      return;
+    }
+
+    // Commit to SQLite
+    const now = Date.now();
+    const idempotencyKey = `gw-${agent}-${now}-${Math.random().toString(36).slice(2)}`;
+    const result = chatDb.addMessage(agent, 'assistant', accumulatedText, now, idempotencyKey);
+
+    if (!result.duplicate) {
+      const clientMsg = formatMessageForClient({
+        seq: result.seq, agent, role: 'assistant', content: accumulatedText, timestamp: now
+      });
+
+      // Broadcast committed message to all subscribed clients
+      broadcastMessage(agent, clientMsg);
+
+      // Send push notification
+      sendPushNotification(agent, accumulatedText).catch(err => {
+        console.error(`Push notification failed for ${agent}:`, err.message);
+      });
+    }
+
+    // Tell streaming clients to finalize
+    broadcastStreaming(agent, { type: 'stream_final', agent, text: accumulatedText });
+  }
+
+  else if (payload.state === 'error' || payload.state === 'aborted') {
+    streamingAccumulator.delete(sessionKey);
+    broadcastStreaming(agent, { type: 'stream_error', agent, error: payload.error || 'Agent error' });
+  }
+}
+
+// Send streaming events to all connected /ws clients subscribed to this agent
+function broadcastStreaming(agent, payload) {
+  const data = JSON.stringify(payload);
+  for (const client of wsClients) {
+    if (client.subscribedAgent === agent && client.ws.readyState === 1) {
+      client.ws.send(data);
+    }
+  }
+}
+
+// Start Gateway connection
+gwConnect();
 
 // Agent channel names for display
 const agentChannels = {
@@ -404,6 +597,63 @@ const server = http.createServer(async (req, res) => {
     }
   }
   
+  // Gateway status
+  else if (req.url === '/gateway/status' && req.method === 'GET') {
+    res.end(JSON.stringify({ ok: true, connected: gwConnected }));
+  }
+
+  // Chat v2: Send message to agent (commits user msg + forwards to Gateway)
+  else if (req.url.match(/^\/chat\/[a-z]+\/send$/) && req.method === 'POST') {
+    const agentKey = req.url.split('/')[2];
+    if (!agentSessions[agentKey]) {
+      res.statusCode = 404;
+      res.end(JSON.stringify({ ok: false, error: 'Agent not found' }));
+      return;
+    }
+
+    let body = '';
+    req.on('data', chunk => body += chunk);
+    req.on('end', async () => {
+      try {
+        const { content } = JSON.parse(body);
+        if (!content) {
+          res.statusCode = 400;
+          res.end(JSON.stringify({ ok: false, error: 'Missing content' }));
+          return;
+        }
+
+        // 1. Commit user message to SQLite
+        const now = Date.now();
+        const idempotencyKey = `user-${now}-${Math.random().toString(36).slice(2)}`;
+        const result = chatDb.addMessage(agentKey, 'user', content, now, idempotencyKey);
+
+        // 2. Broadcast to all subscribed browser clients
+        if (!result.duplicate) {
+          const clientMsg = formatMessageForClient({
+            seq: result.seq, agent: agentKey, role: 'user', content, timestamp: now
+          });
+          broadcastMessage(agentKey, clientMsg);
+        }
+
+        // 3. Send to Gateway for agent delivery
+        if (!gwConnected) {
+          res.end(JSON.stringify({ ok: false, error: 'Gateway not connected', seq: result.seq }));
+          return;
+        }
+
+        const sessionKey = agentSessions[agentKey];
+        await gwRequest('chat.send', { sessionKey, message: content, idempotencyKey });
+
+        res.end(JSON.stringify({ ok: true, seq: result.seq }));
+      } catch (e) {
+        console.error('[Chat-Send] Error:', e.message);
+        res.statusCode = 500;
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
   // Chat v2: Get messages from SQLite
   else if (req.url.startsWith('/chat/') && req.method === 'GET') {
     const agentKey = req.url.split('/')[2];

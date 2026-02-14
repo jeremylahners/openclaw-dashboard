@@ -4,11 +4,8 @@ const fs = require('fs');
 const path = require('path');
 const net = require('net');
 
-const config = require('./config.js');
-
 const PORT = 3001;
 const BACKEND_PORT = 8081;
-const GATEWAY_PORT = config.gatewayPort || 18789;
 const PUBLIC_DIR = __dirname;
 
 const MIME_TYPES = {
@@ -88,41 +85,9 @@ const server = http.createServer((req, res) => {
   });
 });
 
-// Handle WebSocket upgrade for /gw path - proxy to OpenClaw Gateway
+// Handle WebSocket upgrade for /ws path - proxy to backend
 server.on('upgrade', (req, socket, head) => {
-  if (req.url === '/gw') {
-    console.log('[WS] Proxying WebSocket to Gateway on port', GATEWAY_PORT);
-    
-    const gatewaySocket = net.createConnection(GATEWAY_PORT, 'localhost', () => {
-      // Forward the original HTTP upgrade request
-      const headers = Object.entries(req.headers)
-        .map(([k, v]) => `${k}: ${v}`)
-        .join('\r\n');
-      
-      gatewaySocket.write(
-        `${req.method} ${req.url} HTTP/${req.httpVersion}\r\n` +
-        `${headers}\r\n\r\n`
-      );
-      
-      if (head && head.length) {
-        gatewaySocket.write(head);
-      }
-      
-      // Pipe data between client and gateway
-      socket.pipe(gatewaySocket);
-      gatewaySocket.pipe(socket);
-    });
-
-    gatewaySocket.on('error', (e) => {
-      console.error('[WS] Gateway connection error:', e.message);
-      socket.end();
-    });
-
-    socket.on('error', (e) => {
-      console.error('[WS] Client socket error:', e.message);
-      gatewaySocket.end();
-    });
-  } else if (req.url === '/ws') {
+  if (req.url === '/ws') {
     // Chat v2: proxy to backend WebSocket server
     console.log('[WS] Proxying chat WebSocket to backend on port', BACKEND_PORT);
     const backendSocket = net.createConnection(BACKEND_PORT, 'localhost', () => {
@@ -155,5 +120,4 @@ server.on('upgrade', (req, socket, head) => {
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`🎨 OpenClaw Dashboard Frontend serving on http://0.0.0.0:${PORT}`);
   console.log(`📡 API Backend: http://localhost:${BACKEND_PORT}`);
-  console.log(`🔌 Gateway WS: ws://localhost:${GATEWAY_PORT}`);
 });

@@ -249,7 +249,10 @@
         <div class="files-section">
           <div class="files-header">
             <h3>📁 Files for Review</h3>
-            <button class="refresh-btn" onclick="fetchFiles()">↻</button>
+            <div style="display: flex; gap: 5px;">
+              <button class="refresh-btn" onclick="expandAllFolders()" title="Expand All">📂</button>
+              <button class="refresh-btn" onclick="fetchFiles()" title="Refresh">↻</button>
+            </div>
           </div>
           <div id="filesList" class="files-list">
             <div class="no-files">No files pending review</div>
@@ -319,7 +322,6 @@
     </div>
   </div>
   
-  <script src="config.js"></script>
   <script>
     // Toast Notification System (inlined for reliability)
     class ToastManager {
@@ -474,151 +476,6 @@
 
     // API endpoint - same origin (server.js on port 3000)
     const API_BASE = '/api';
-
-    // Gateway WebSocket config - proxied through dashboard server
-    const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const GATEWAY_WS_URL = `${wsProto}//${window.location.host}/gw`;
-    const GATEWAY_TOKEN = config.gatewayToken;
-
-    // Extract text from an OpenClaw message object
-    // Messages have shape: { role, content: string | [{ type: "text", text: "..." }, ...], timestamp }
-    function extractMessageText(message) {
-      if (!message) return '';
-      if (typeof message === 'string') return message;
-      const content = message.content;
-      if (typeof content === 'string') return content;
-      if (Array.isArray(content)) {
-        return content
-          .filter(item => item.type === 'text' && typeof item.text === 'string')
-          .map(item => item.text)
-          .join('\n');
-      }
-      if (typeof message.text === 'string') return message.text;
-      return '';
-    }
-
-    // --- Gateway WebSocket Connection ---
-    let gwSocket = null;
-    let gwConnected = false;
-    let gwRequestId = 0;
-    let gwPendingRequests = new Map(); // id -> { resolve, reject }
-    let gwChatCallbacks = new Map(); // sessionKey -> { onDelta, onFinal, onError }
-
-    function gwNextId() { return `req-${++gwRequestId}`; }
-
-    function gwConnect() {
-      if (gwSocket && gwSocket.readyState <= 1) return; // already open/connecting
-
-      console.log('[GW] Connecting to', GATEWAY_WS_URL);
-      gwSocket = new WebSocket(GATEWAY_WS_URL);
-
-      gwSocket.onopen = () => {
-        console.log('[GW] WebSocket open, sending connect...');
-        const connId = gwNextId();
-        gwSendRaw({
-          type: 'req', id: connId, method: 'connect',
-          params: {
-            minProtocol: 3, maxProtocol: 3,
-            client: { id: 'webchat-ui', version: '1.0.0', platform: 'web', mode: 'ui' },
-            role: 'operator',
-            scopes: ['operator.read', 'operator.write'],
-            auth: { token: GATEWAY_TOKEN }
-          }
-        });
-        gwPendingRequests.set(connId, {
-          resolve: (payload) => {
-            gwConnected = true;
-            console.log('[GW] Connected!', payload.server?.version);
-            const wsEl = document.getElementById('wsStatus');
-            if (wsEl) { wsEl.textContent = 'Live'; wsEl.style.color = '#22c55e'; }
-          },
-          reject: (err) => console.error('[GW] Connect failed:', err)
-        });
-      };
-
-      gwSocket.onmessage = (event) => {
-        let frame;
-        try { frame = JSON.parse(event.data); } catch { return; }
-
-        // Response to a request
-        if (frame.type === 'res' && frame.id) {
-          const pending = gwPendingRequests.get(frame.id);
-          if (pending) {
-            gwPendingRequests.delete(frame.id);
-            if (frame.ok) pending.resolve(frame.payload);
-            else pending.reject(frame.error);
-          }
-        }
-
-        // Streaming chat event
-        if (frame.type === 'event' && frame.event === 'chat') {
-          const p = frame.payload;
-          // Find callback for this sessionKey
-          for (const [key, cb] of gwChatCallbacks) {
-            if (p.sessionKey && p.sessionKey === key) {
-              if (p.state === 'delta' && p.message) {
-                const text = extractMessageText(p.message);
-                if (text) cb.onDelta(text, p);
-              }
-              else if (p.state === 'final') {
-                // Final event may carry the complete message - apply it before finalizing
-                if (p.message) {
-                  const text = extractMessageText(p.message);
-                  if (text) cb.onDelta(text, p);
-                }
-                cb.onFinal(p);
-              }
-              else if (p.state === 'error' || p.state === 'aborted') cb.onError(p);
-            }
-          }
-        }
-
-        // Keepalive
-        if (frame.type === 'event' && frame.event === 'tick') {
-          // no-op, connection is alive
-        }
-      };
-
-      gwSocket.onclose = () => {
-        gwConnected = false;
-        console.log('[GW] WebSocket closed, reconnecting in 3s...');
-        const wsEl = document.getElementById('wsStatus');
-        if (wsEl) { wsEl.textContent = 'Reconnecting...'; wsEl.style.color = '#f59e0b'; }
-        setTimeout(gwConnect, 3000);
-      };
-
-      gwSocket.onerror = (e) => {
-        console.error('[GW] WebSocket error:', e);
-      };
-    }
-
-    function gwSendRaw(data) {
-      if (gwSocket && gwSocket.readyState === 1) {
-        gwSocket.send(JSON.stringify(data));
-      }
-    }
-
-    function gwRequest(method, params = {}) {
-      return new Promise((resolve, reject) => {
-        if (!gwSocket || gwSocket.readyState !== 1) {
-          reject(new Error('WebSocket not connected'));
-          return;
-        }
-        const id = gwNextId();
-        gwPendingRequests.set(id, { resolve, reject });
-        gwSendRaw({ type: 'req', id, method, params });
-        // Timeout after 60s
-        setTimeout(() => {
-          if (gwPendingRequests.has(id)) {
-            gwPendingRequests.delete(id);
-            reject(new Error('Request timeout'));
-          }
-        }, 60000);
-      });
-    }
-
-    // Start WebSocket connection
-    gwConnect();
 
     // Cache for agent data
     let agentMemoryCache = {};
@@ -1077,6 +934,19 @@
       const states = getFolderStates();
       if (folderPath in states) return states[folderPath];
       return true; // collapsed by default
+    }
+
+    function expandAllFolders() {
+      // Clear all folder states (removes collapsed state)
+      localStorage.removeItem('folderStates');
+      
+      // Re-render with all folders expanded
+      const container = document.getElementById('filesList');
+      container.querySelectorAll('.folder-item').forEach(folder => {
+        folder.classList.remove('collapsed');
+        const path = folder.dataset.path;
+        if (path) saveFolderState(path, false); // Save as expanded
+      });
     }
 
     // Fetch files for review
@@ -1543,9 +1413,10 @@
         document.getElementById('panelName').textContent = name;
         document.getElementById('panelRole').textContent = role;
 
-        // Update WebSocket status indicator
-        document.getElementById('wsStatus').textContent = gwConnected ? 'Live' : 'Connecting...';
-        document.getElementById('wsStatus').style.color = gwConnected ? '#22c55e' : '#f59e0b';
+        // Update WebSocket status indicator (driven by chatWs state)
+        const wsUp = chatWs && chatWs.readyState === 1;
+        document.getElementById('wsStatus').textContent = wsUp ? 'Live' : 'Connecting...';
+        document.getElementById('wsStatus').style.color = wsUp ? '#22c55e' : '#f59e0b';
 
         // Load live chat for this agent
         loadAgentChat(agentKey);
@@ -1748,7 +1619,7 @@
 
     function chatWsConnect() {
       if (chatWs && chatWs.readyState <= 1) return;
-      const wsProto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+      const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const url = `${wsProto}//${window.location.host}/ws`;
       console.log('[Chat-WS] Connecting to', url);
       chatWs = new WebSocket(url);
@@ -1783,10 +1654,30 @@
         if (msg.type === 'sync_update') {
           handleHistoryUpdate(msg.agent, msg.messages);
         }
+
+        // Server-owned Gateway streaming events
+        if (msg.type === 'stream_delta') {
+          updateStreaming(msg.agent, msg.text);
+        }
+
+        if (msg.type === 'stream_final') {
+          if (!msg.text || msg.filtered) {
+            clearStreamingEl(msg.agent);
+          }
+          // If text is present, the server already committed the message —
+          // message_committed will follow and replace the streaming element.
+        }
+
+        if (msg.type === 'stream_error') {
+          console.error('[Stream] Error from', msg.agent, msg.error);
+          clearStreamingEl(msg.agent);
+        }
       };
 
       chatWs.onclose = () => {
         console.log('[Chat-WS] Disconnected, reconnecting in 3s');
+        const wsEl = document.getElementById('wsStatus');
+        if (wsEl) { wsEl.textContent = 'Reconnecting...'; wsEl.style.color = '#f59e0b'; }
         chatWsReconnectTimer = setTimeout(chatWsConnect, 3000);
       };
 
@@ -1897,11 +1788,6 @@
         const agentEl = document.querySelector(`.agent.${agent}`);
         if (agentEl) agentEl.classList.add('has-unread');
       }
-    }
-
-    // Session key for an agent
-    function agentSessionKey(agentKey) {
-      return `agent:${agentKey}:webchat:user`;
     }
 
     function createMessageEl(m) {
@@ -2368,81 +2254,8 @@
         }
       }
 
-      // Register Gateway streaming callback — don't clear other agents' callbacks
-      // so responses from agents we switched away from still get committed to DB
-      const sessionKey = agentSessionKey(agentKey);
-
-      gwChatCallbacks.set(sessionKey, {
-        onDelta: (text) => {
-          updateStreaming(agentKey, text);
-        },
-        onFinal: () => {
-          const ss = streamingState.get(agentKey);
-          if (!ss?.text) {
-            clearStreamingEl(agentKey);
-            return;
-          }
-
-          const trimmed = ss.text.trim();
-          if (/^(NO_REPLY|NO_?|HEARTBEAT_OK|HEARTBEAT_?|ANNOUNCE_SKIP|ANNOUNCE_?)\s*$/i.test(trimmed)) {
-            clearStreamingEl(agentKey);
-            return;
-          }
-
-          const isActiveAgent = (agentKey === currentAgentKey);
-
-          // Finalize streaming element in-place if this agent is still visible
-          if (isActiveAgent && ss.el) {
-            ss.el.classList.remove('streaming');
-            ss.el.dataset.finalized = 'true';
-            const textEl = ss.el.querySelector('.streaming-text');
-            if (textEl) {
-              textEl.classList.remove('streaming-text');
-              textEl.innerHTML = formatMarkdown(ss.text);
-            }
-          }
-
-          // Always commit to DB and cache, even if user switched away
-          const now = Date.now();
-          const optimisticBot = {
-            seq: now,
-            agent: agentKey,
-            content: ss.text,
-            isBot: true,
-            author: agentKey.charAt(0).toUpperCase() + agentKey.slice(1),
-            authorId: agentKey,
-            timestamp: now,
-            timestampFormatted: new Date(now).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
-            _optimistic: true
-          };
-          if (!messageCache.has(agentKey)) messageCache.set(agentKey, []);
-          messageCache.get(agentKey).push(optimisticBot);
-          streamingState.delete(agentKey);
-
-          // Show unread indicator if user switched away
-          if (!isActiveAgent) {
-            unreadCounts.set(agentKey, (unreadCounts.get(agentKey) || 0) + 1);
-            const agentEl = document.querySelector(`.agent.${agentKey}`);
-            if (agentEl) agentEl.classList.add('has-unread');
-          }
-
-          const idempotencyKey = `agent-${agentKey}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-          fetch(`${API_BASE}/chat/${agentKey}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              content: ss.text,
-              role: 'assistant',
-              idempotencyKey,
-              timestamp: now
-            })
-          }).catch(e => console.error('[Chat-v2] Failed to commit agent reply:', e));
-        },
-        onError: (payload) => {
-          console.error('[GW] Chat error:', payload);
-          clearStreamingEl(agentKey);
-        }
-      });
+      // Streaming is now handled server-side — stream_delta/stream_final/stream_error
+      // events arrive via chatWs from the backend Gateway connection
     }
 
     // Parse natural language for movement commands
@@ -2617,41 +2430,28 @@
       appendMessageEl(optimisticMsg);
       autoScroll();
 
-      // Commit user message to server
-      fetch(`${API_BASE}/chat/${currentAgentKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          content: text,
-          role: 'user',
-          idempotencyKey,
-          timestamp: now
-        })
-      }).catch(e => console.error('[Chat-v2] Failed to commit user message:', e));
-
-      // Send via Gateway for agent delivery
-      if (gwConnected) {
-        try {
-          const sessionKey = agentSessionKey(currentAgentKey);
-          await gwRequest('chat.send', {
-            sessionKey,
-            message: text,
-            idempotencyKey
-          });
-        } catch (e) {
-          console.error('[GW] chat.send failed:', e);
+      // Send via backend REST — server commits user message and forwards to Gateway
+      try {
+        const resp = await fetch(`${API_BASE}/chat/${currentAgentKey}/send`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: text })
+        });
+        const data = await resp.json();
+        if (!data.ok) {
           const errEl = document.createElement('div');
           errEl.style.cssText = 'text-align: center; color: #f59e0b; padding: 8px; font-size: 0.8rem;';
-          errEl.textContent = `Failed to send: ${e.message || 'WebSocket not connected'}`;
+          errEl.textContent = `Send error: ${data.error || 'Unknown error'}`;
           chatMessages.appendChild(errEl);
           autoScroll();
         }
-      } else {
+      } catch (e) {
+        console.error('[Chat] send failed:', e);
         const errEl = document.createElement('div');
         errEl.style.cssText = 'text-align: center; color: #f59e0b; padding: 8px; font-size: 0.8rem;';
-        errEl.textContent = 'Gateway not connected. Reconnecting...';
+        errEl.textContent = `Failed to send: ${e.message}`;
         chatMessages.appendChild(errEl);
-        gwConnect();
+        autoScroll();
       }
 
       chatInput.focus();
