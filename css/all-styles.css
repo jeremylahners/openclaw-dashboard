@@ -1179,6 +1179,40 @@
       margin: 0 auto;
     }
 
+    /* Mobile file viewer */
+    @media (max-width: 768px) {
+      .file-viewer {
+        padding: 0;
+        z-index: 1300; /* Above everything including hamburger menu (1200) */
+      }
+      .file-viewer-header {
+        padding: 12px 15px;
+        margin-bottom: 0;
+        position: sticky;
+        top: 0;
+        background: #0f0f1a;
+        z-index: 1;
+      }
+      .file-viewer-header h2 {
+        font-size: 1rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        flex: 1;
+        margin-right: 10px;
+      }
+      .file-viewer-close {
+        padding: 10px 20px;
+        font-size: 1rem;
+        min-height: 44px; /* iOS tap target */
+      }
+      .file-viewer-content {
+        border-radius: 0;
+        padding: 15px;
+        font-size: 0.85rem;
+      }
+    }
+
     /* Markdown styling */
     .markdown-view h1 {
       font-size: 2rem;

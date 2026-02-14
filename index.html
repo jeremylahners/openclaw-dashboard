@@ -1227,6 +1227,9 @@
 
       document.body.appendChild(viewer);
 
+      // Prevent body scroll on mobile
+      document.body.style.overflow = 'hidden';
+
       // Add close button event listener
       const closeBtn = viewer.querySelector('.file-viewer-close');
       console.log('[File Viewer] Close button found:', closeBtn);
@@ -1240,6 +1243,7 @@
             URL.revokeObjectURL(blobUrl);
           }
           console.log('[File Viewer] Removing viewer');
+          document.body.style.overflow = '';
           viewer.remove();
         });
         console.log('[File Viewer] Event listener attached');
