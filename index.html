@@ -1615,7 +1615,10 @@
 
       chatWs.onopen = () => {
         console.log('[Chat-WS] Connected');
+        document.getElementById('wsStatus').textContent = 'Live';
+        document.getElementById('wsStatus').style.color = '#22c55e';
         if (currentAgentKey) {
+          console.log('[Chat-WS] Subscribing to', currentAgentKey);
           chatWs.send(JSON.stringify({ type: 'subscribe', agent: currentAgentKey }));
         }
       };
@@ -1656,8 +1659,17 @@
       if (!messageCache.has(agent)) messageCache.set(agent, []);
       const cache = messageCache.get(agent);
 
-      // Dedupe by seq
-      if (cache.length > 0 && cache[cache.length - 1].seq >= message.seq) return;
+      // Dedupe by seq — skip if already in cache (but ignore optimistic entries with _optimistic flag)
+      const lastReal = cache.filter(m => !m._optimistic).pop();
+      if (lastReal && lastReal.seq >= message.seq) return;
+
+      // Replace optimistic entry with matching content (works for both user and bot messages)
+      const optIdx = cache.findIndex(m => m._optimistic && m.content === message.content);
+      if (optIdx !== -1) {
+        cache[optIdx] = message; // replace optimistic with real
+        return; // already displayed
+      }
+
       cache.push(message);
 
       if (agent === currentAgentKey) {
@@ -2115,9 +2127,23 @@
         renderAllMessages(agentKey, cached);
       }
 
-      // Subscribe via chat WebSocket
+      // Subscribe via chat WebSocket — or fall back to REST if not connected
       if (chatWs && chatWs.readyState === 1) {
         chatWs.send(JSON.stringify({ type: 'subscribe', agent: agentKey }));
+      } else {
+        // WebSocket not ready yet — fetch via REST API as fallback
+        console.log('[Chat] WS not ready, fetching via REST for', agentKey);
+        try {
+          const resp = await fetch(`/api/chat/${agentKey}`);
+          if (resp.ok) {
+            const data = await resp.json();
+            if (data.messages) {
+              handleHistory(agentKey, data.messages);
+            }
+          }
+        } catch (e) {
+          console.error('[Chat] REST fallback failed:', e);
+        }
       }
 
       // Register Gateway streaming callback
@@ -2141,6 +2167,33 @@
             return;
           }
 
+          // Finalize streaming element in-place (no flash, preserves DOM order)
+          if (ss.el) {
+            ss.el.classList.remove('streaming');
+            ss.el.dataset.finalized = 'true';
+            const textEl = ss.el.querySelector('.streaming-text');
+            if (textEl) {
+              textEl.classList.remove('streaming-text');
+              textEl.innerHTML = formatMarkdown(ss.text);
+            }
+          }
+          // Add to message cache as optimistic bot message
+          const now = Date.now();
+          const optimisticBot = {
+            seq: now,
+            agent: agentKey,
+            content: ss.text,
+            isBot: true,
+            author: agentKey.charAt(0).toUpperCase() + agentKey.slice(1),
+            authorId: agentKey,
+            timestamp: now,
+            timestampFormatted: new Date(now).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+            _optimistic: true
+          };
+          if (!messageCache.has(agentKey)) messageCache.set(agentKey, []);
+          messageCache.get(agentKey).push(optimisticBot);
+          streamingState.delete(agentKey);
+
           const idempotencyKey = `agent-${agentKey}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
           fetch(`${API_BASE}/chat/${agentKey}`, {
             method: 'POST',
@@ -2149,7 +2202,7 @@
               content: ss.text,
               role: 'assistant',
               idempotencyKey,
-              timestamp: Date.now()
+              timestamp: now
             })
           }).catch(e => console.error('[Chat-v2] Failed to commit agent reply:', e));
         },
@@ -2312,8 +2365,27 @@
       delete messageDrafts[currentAgentKey];
       localStorage.setItem('messageDrafts', JSON.stringify(messageDrafts));
 
+      // Optimistically display user message immediately
+      const now = Date.now();
+      const idempotencyKey = `user-${now}-${Math.random().toString(36).slice(2)}`;
+      const optimisticMsg = {
+        seq: now, // temporary seq, will be replaced by server seq on next history load
+        agent: currentAgentKey,
+        content: text,
+        isBot: false,
+        author: 'Jeremy',
+        authorId: 'user',
+        timestamp: now,
+        timestampFormatted: new Date(now).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+        _optimistic: true
+      };
+
+      if (!messageCache.has(currentAgentKey)) messageCache.set(currentAgentKey, []);
+      messageCache.get(currentAgentKey).push(optimisticMsg);
+      appendMessageEl(optimisticMsg);
+      autoScroll();
+
       // Commit user message to server
-      const idempotencyKey = `user-${Date.now()}-${Math.random().toString(36).slice(2)}`;
       fetch(`${API_BASE}/chat/${currentAgentKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -2321,7 +2393,7 @@
           content: text,
           role: 'user',
           idempotencyKey,
-          timestamp: Date.now()
+          timestamp: now
         })
       }).catch(e => console.error('[Chat-v2] Failed to commit user message:', e));
 
