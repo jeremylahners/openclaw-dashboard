@@ -122,6 +122,31 @@ server.on('upgrade', (req, socket, head) => {
       console.error('[WS] Client socket error:', e.message);
       gatewaySocket.end();
     });
+  } else if (req.url === '/ws') {
+    // Chat v2: proxy to backend WebSocket server
+    console.log('[WS] Proxying chat WebSocket to backend on port', BACKEND_PORT);
+    const backendSocket = net.createConnection(BACKEND_PORT, 'localhost', () => {
+      const headers = Object.entries(req.headers)
+        .map(([k, v]) => `${k}: ${v}`)
+        .join('\r\n');
+      backendSocket.write(
+        `${req.method} ${req.url} HTTP/${req.httpVersion}\r\n` +
+        `${headers}\r\n\r\n`
+      );
+      if (head && head.length) {
+        backendSocket.write(head);
+      }
+      socket.pipe(backendSocket);
+      backendSocket.pipe(socket);
+    });
+    backendSocket.on('error', (e) => {
+      console.error('[WS] Backend chat WS error:', e.message);
+      socket.end();
+    });
+    socket.on('error', (e) => {
+      console.error('[WS] Client socket error:', e.message);
+      backendSocket.end();
+    });
   } else {
     socket.end('HTTP/1.1 404 Not Found\r\n\r\n');
   }
