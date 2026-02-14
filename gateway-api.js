@@ -931,17 +931,46 @@ wss.on('connection', (ws) => {
 
     if (msg.type === 'subscribe' && msg.agent && agentSessions[msg.agent]) {
       client.subscribedAgent = msg.agent;
-      const messages = chatDb.getMessages(msg.agent);
-      ws.send(JSON.stringify({
-        type: 'history',
-        agent: msg.agent,
-        messages: messages.map(formatMessageForClient)
-      }));
-      console.log('[WS-Chat] Client subscribed to:', msg.agent, '- sent', messages.length, 'messages');
+
+      // If client sends lastSeq, only send messages since then
+      let messages;
+      if (msg.lastSeq && typeof msg.lastSeq === 'number') {
+        messages = chatDb.getMessagesSince(msg.agent, msg.lastSeq);
+        if (messages.length > 0) {
+          ws.send(JSON.stringify({
+            type: 'history_update',
+            agent: msg.agent,
+            messages: messages.map(formatMessageForClient)
+          }));
+        }
+      } else {
+        messages = chatDb.getMessages(msg.agent);
+        ws.send(JSON.stringify({
+          type: 'history',
+          agent: msg.agent,
+          messages: messages.map(formatMessageForClient)
+        }));
+      }
+      console.log('[WS-Chat] Client subscribed to:', msg.agent, '- sent', (messages || []).length, 'messages', msg.lastSeq ? `(since seq ${msg.lastSeq})` : '(full)');
     }
 
     if (msg.type === 'unsubscribe') {
       client.subscribedAgent = null;
+    }
+
+    // Multi-agent sync: client sends lastSeq per agent, server returns any new messages
+    if (msg.type === 'sync' && msg.agents) {
+      for (const [agent, lastSeq] of Object.entries(msg.agents)) {
+        if (!agentSessions[agent]) continue;
+        const newMessages = chatDb.getMessagesSince(agent, lastSeq);
+        if (newMessages.length > 0) {
+          ws.send(JSON.stringify({
+            type: 'sync_update',
+            agent,
+            messages: newMessages.map(formatMessageForClient)
+          }));
+        }
+      }
     }
   });
 
