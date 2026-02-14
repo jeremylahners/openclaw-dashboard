@@ -420,7 +420,7 @@
     const sidePanel = document.getElementById('sidePanel');
     const agents = document.querySelectorAll('.agent');
     const panelClose = document.getElementById('panelClose');
-    const tabs = document.querySelectorAll('.panel-tab');
+    // Note: tab elements are now built dynamically per-agent by buildTabsForAgent()
     const chatInput = document.getElementById('chatInput');
     const chatSend = document.getElementById('chatSend');
     const chatMessages = document.getElementById('chatMessages');
@@ -1553,11 +1553,8 @@
         // Show panel immediately
         sidePanel.classList.remove('hidden');
 
-        // Reset to chat tab
-        tabs.forEach(t => t.classList.remove('active'));
-        document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
-        tabs[0].classList.add('active');
-        document.getElementById('tab-chat').classList.add('active');
+        // Build agent-specific tabs and activate chat
+        buildTabsForAgent(agentKey);
 
         // Fetch and render memory data (async)
         const memoryData = await fetchAgentMemory(agentKey);
@@ -1579,16 +1576,7 @@
       }
     });
 
-    // Tab switching
-    tabs.forEach(tab => {
-      tab.addEventListener('click', () => {
-        tabs.forEach(t => t.classList.remove('active'));
-        document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
-
-        tab.classList.add('active');
-        document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
-      });
-    });
+    // Tab click handlers are now attached dynamically by buildTabsForAgent()
 
     // --- Chat System (WebSocket-based) ---
     let currentAgentKey = null;
@@ -1600,6 +1588,145 @@
       if (stored) messageDrafts = JSON.parse(stored);
     } catch (e) {
       console.error('Failed to load drafts:', e);
+    }
+
+    // Per-agent custom tab configuration
+    // Chat is always first, Memory and Files are always last
+    const AGENT_TABS = {
+      isla:   [{ id: 'action-items', label: '📋 Actions', source: 'action-items' },
+               { id: 'sprint', label: '📊 Sprint', source: 'sprint' }],
+      marcus: [{ id: 'prs', label: '🔀 PRs', source: 'prs' },
+               { id: 'backlog', label: '📋 Backlog', source: 'backlog' }],
+      harper: [{ id: 'bugs', label: '🐛 Bugs', source: 'bugs' },
+               { id: 'testplans', label: '✅ Tests', source: 'testplans' }],
+      eli:    [{ id: 'architecture', label: '🏗️ Arch', source: 'architecture' },
+               { id: 'techdebt', label: '🔧 Debt', source: 'techdebt' }],
+      sage:   [{ id: 'research', label: '📚 Research', source: 'research' },
+               { id: 'findings', label: '🔍 Findings', source: 'findings' }],
+      julie:  [{ id: 'campaigns', label: '📣 Campaigns', source: 'campaigns' },
+               { id: 'analytics', label: '📊 Analytics', source: 'analytics' }],
+      remy:   [{ id: 'recipes', label: '🍳 Recipes', source: 'recipes' },
+               { id: 'mealplan', label: '📅 Meals', source: 'mealplan' }],
+      lena:   [{ id: 'workouts', label: '🏋️ Workouts', source: 'workouts' },
+               { id: 'progress', label: '📈 Progress', source: 'progress' }],
+      val:    [{ id: 'budget', label: '💰 Budget', source: 'budget' },
+               { id: 'reports', label: '📊 Reports', source: 'reports' }],
+      dash:   [{ id: 'components', label: '🖥️ UI', source: 'components' },
+               { id: 'roadmap', label: '📋 Roadmap', source: 'roadmap' }],
+      atlas:  [{ id: 'projects', label: '🗺️ Projects', source: 'projects' },
+               { id: 'tasks', label: '📋 Tasks', source: 'tasks' }],
+      nova:   [{ id: 'team', label: '👥 Team', source: 'team' },
+               { id: 'policies', label: '📋 Policies', source: 'policies' }],
+    };
+
+    function buildTabsForAgent(agentKey) {
+      const customTabs = AGENT_TABS[agentKey] || [];
+      const panelTabsEl = document.querySelector('.panel-tabs');
+      const tabContent = document.querySelector('.tab-content');
+
+      // Build tab bar HTML: Chat + custom + Memory + Files
+      let tabBarHtml = '<div class="panel-tab active" data-tab="chat">💬 Chat</div>';
+      customTabs.forEach(t => {
+        tabBarHtml += `<div class="panel-tab" data-tab="${t.id}" data-source="${t.source}">${t.label}</div>`;
+      });
+      tabBarHtml += '<div class="panel-tab" data-tab="memory">🧠 Memory</div>';
+      tabBarHtml += '<div class="panel-tab" data-tab="files">📁 Files</div>';
+      panelTabsEl.innerHTML = tabBarHtml;
+
+      // Remove old custom tab panes (keep chat, memory, status, files)
+      tabContent.querySelectorAll('.tab-pane[data-custom]').forEach(p => p.remove());
+
+      // Create panes for custom tabs — insert after chat pane
+      const chatPane = document.getElementById('tab-chat');
+      let insertAfter = chatPane;
+      customTabs.forEach(t => {
+        const pane = document.createElement('div');
+        pane.className = 'tab-pane';
+        pane.id = `tab-${t.id}`;
+        pane.dataset.custom = 'true';
+        pane.dataset.source = t.source;
+        pane.dataset.agent = agentKey;
+        pane.innerHTML = '<div class="custom-tab-content" style="padding: 15px; overflow-y: auto; flex: 1;"><div style="text-align: center; color: #666; padding: 20px;">Loading...</div></div>';
+        insertAfter.after(pane);
+        insertAfter = pane;
+      });
+
+      // Re-attach tab click handlers
+      panelTabsEl.querySelectorAll('.panel-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+          panelTabsEl.querySelectorAll('.panel-tab').forEach(t => t.classList.remove('active'));
+          tabContent.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+
+          tab.classList.add('active');
+          const pane = document.getElementById('tab-' + tab.dataset.tab);
+          if (pane) {
+            pane.classList.add('active');
+
+            // Lazy-load custom tab data on first click
+            if (tab.dataset.source && !pane.dataset.loaded) {
+              loadCustomTabData(agentKey, tab.dataset.source, pane);
+            }
+          }
+        });
+      });
+
+      // Activate chat tab and deactivate all others
+      tabContent.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+      document.getElementById('tab-chat').classList.add('active');
+    }
+
+    async function loadCustomTabData(agentKey, source, pane) {
+      const container = pane.querySelector('.custom-tab-content');
+      try {
+        const resp = await fetch(`${API_BASE}/agent-data/${agentKey}/${source}`);
+        if (!resp.ok) throw new Error('Failed to fetch');
+        const data = await resp.json();
+
+        if (data.empty) {
+          const agentName = agentKey.charAt(0).toUpperCase() + agentKey.slice(1);
+          container.innerHTML = `<div style="text-align: center; color: #666; padding: 40px 20px;">
+            <div style="font-size: 2rem; margin-bottom: 10px;">📭</div>
+            <p>No data yet.</p>
+            <p style="font-size: 0.85rem;">Ask ${agentName} to update this tab.</p>
+          </div>`;
+        } else if (data.format === 'markdown' && typeof marked !== 'undefined') {
+          marked.setOptions({ breaks: true, gfm: true });
+          container.innerHTML = `<div class="markdown-view" style="max-width: 800px;">${marked.parse(data.content)}</div>`;
+        } else if (data.format === 'json') {
+          container.innerHTML = renderAgentDataTable(data.data);
+        } else {
+          container.textContent = JSON.stringify(data, null, 2);
+        }
+        pane.dataset.loaded = 'true';
+      } catch (e) {
+        container.innerHTML = `<div style="text-align: center; color: #f59e0b; padding: 20px;">Failed to load: ${e.message}</div>`;
+      }
+    }
+
+    function renderAgentDataTable(data) {
+      if (Array.isArray(data)) {
+        if (data.length === 0) return '<div style="color: #666; text-align: center; padding: 20px;">No items</div>';
+        return data.map(item => {
+          const entries = Object.entries(item).map(([k, v]) => {
+            return `<div style="display: flex; gap: 8px; padding: 4px 0; border-bottom: 1px solid #222;">
+              <span style="color: #888; min-width: 100px; font-size: 0.8rem;">${escapeHtml(k)}</span>
+              <span style="color: #ddd; font-size: 0.85rem;">${escapeHtml(String(v))}</span>
+            </div>`;
+          }).join('');
+          return `<div style="background: #1a1a2e; border-radius: 8px; padding: 12px; margin-bottom: 8px;">${entries}</div>`;
+        }).join('');
+      }
+      if (typeof data === 'object' && data !== null) {
+        const entries = Object.entries(data).map(([k, v]) => {
+          const val = typeof v === 'object' ? JSON.stringify(v, null, 2) : String(v);
+          return `<div style="display: flex; gap: 8px; padding: 6px 0; border-bottom: 1px solid #222;">
+            <span style="color: #888; min-width: 120px; font-weight: 600; font-size: 0.85rem;">${escapeHtml(k)}</span>
+            <span style="color: #ddd; font-size: 0.85rem; white-space: pre-wrap;">${escapeHtml(val)}</span>
+          </div>`;
+        }).join('');
+        return `<div style="background: #1a1a2e; border-radius: 8px; padding: 12px;">${entries}</div>`;
+      }
+      return `<pre style="color: #ddd;">${escapeHtml(String(data))}</pre>`;
     }
 
     const messageCache = new Map(); // agentKey -> Message[] (populated from server only)

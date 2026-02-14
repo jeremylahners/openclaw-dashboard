@@ -622,10 +622,15 @@
     .panel-tabs {
       display: flex;
       border-bottom: 1px solid #333;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+    }
+    .panel-tabs::-webkit-scrollbar {
+      display: none;
     }
 
     .panel-tab {
-      flex: 1;
       padding: 12px;
       text-align: center;
       font-size: 0.8rem;
@@ -633,6 +638,8 @@
       cursor: pointer;
       border-bottom: 2px solid transparent;
       transition: all 0.2s;
+      white-space: nowrap;
+      flex-shrink: 0;
     }
 
     .panel-tab:hover { color: #aaa; }
