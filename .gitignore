@@ -1,5 +1,6 @@
 # Sensitive data
 messages.json
+messages.json.bak
 config.js
 action-items.json
 push-subscriptions.json
@@ -13,6 +14,11 @@ npm-debug.log*
 
 # Dependencies
 node_modules/
+
+# SQLite database (user data)
+chat.db
+chat.db-wal
+chat.db-shm
 
 # Old/backup files
 .old/
