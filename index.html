@@ -1075,8 +1075,8 @@
 
     function isFolderCollapsed(folderPath) {
       const states = getFolderStates();
-      // Default to expanded (false) if not set
-      return states[folderPath] === true;
+      if (folderPath in states) return states[folderPath];
+      return true; // collapsed by default
     }
 
     // Fetch files for review
@@ -1104,9 +1104,9 @@
 
       container.innerHTML = renderFileTree(items, 0);
 
-      // Add click handlers for folder toggles
-      container.querySelectorAll('.folder-toggle').forEach(toggle => {
-        toggle.addEventListener('click', (e) => {
+      // Add click handlers for folder headers (icon + name both clickable)
+      container.querySelectorAll('.folder-header').forEach(header => {
+        header.addEventListener('click', (e) => {
           e.stopPropagation();
           const folder = e.target.closest('.folder-item');
           const folderPath = folder.dataset.path;
@@ -2097,8 +2097,15 @@
 
     // Load draft message for agent
     function loadDraftForAgent(agentKey) {
-      chatInput.value = messageDrafts[agentKey] || '';
-      autoResizeTextarea(); // Resize to fit draft content
+      const draft = messageDrafts[agentKey] || '';
+      chatInput.value = draft;
+      
+      // Only auto-resize if there's actual content, otherwise reset to single line
+      if (draft.trim()) {
+        autoResizeTextarea();
+      } else {
+        chatInput.style.height = '40px'; // Reset to min-height (single line)
+      }
     }
 
     // Load chat for an agent
