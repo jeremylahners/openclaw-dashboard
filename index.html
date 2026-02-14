@@ -2368,9 +2368,9 @@
         }
       }
 
-      // Register Gateway streaming callback
+      // Register Gateway streaming callback — don't clear other agents' callbacks
+      // so responses from agents we switched away from still get committed to DB
       const sessionKey = agentSessionKey(agentKey);
-      gwChatCallbacks.clear();
 
       gwChatCallbacks.set(sessionKey, {
         onDelta: (text) => {
@@ -2389,8 +2389,10 @@
             return;
           }
 
-          // Finalize streaming element in-place (no flash, preserves DOM order)
-          if (ss.el) {
+          const isActiveAgent = (agentKey === currentAgentKey);
+
+          // Finalize streaming element in-place if this agent is still visible
+          if (isActiveAgent && ss.el) {
             ss.el.classList.remove('streaming');
             ss.el.dataset.finalized = 'true';
             const textEl = ss.el.querySelector('.streaming-text');
@@ -2399,7 +2401,8 @@
               textEl.innerHTML = formatMarkdown(ss.text);
             }
           }
-          // Add to message cache as optimistic bot message
+
+          // Always commit to DB and cache, even if user switched away
           const now = Date.now();
           const optimisticBot = {
             seq: now,
@@ -2415,6 +2418,13 @@
           if (!messageCache.has(agentKey)) messageCache.set(agentKey, []);
           messageCache.get(agentKey).push(optimisticBot);
           streamingState.delete(agentKey);
+
+          // Show unread indicator if user switched away
+          if (!isActiveAgent) {
+            unreadCounts.set(agentKey, (unreadCounts.get(agentKey) || 0) + 1);
+            const agentEl = document.querySelector(`.agent.${agentKey}`);
+            if (agentEl) agentEl.classList.add('has-unread');
+          }
 
           const idempotencyKey = `agent-${agentKey}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
           fetch(`${API_BASE}/chat/${agentKey}`, {
