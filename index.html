@@ -1588,7 +1588,6 @@
 
     // --- Chat System (WebSocket-based) ---
     let currentAgentKey = null;
-    let chatLoadGeneration = 0; // Increments on each agent switch to ignore stale async responses
 
     // Load drafts from localStorage on startup
     let messageDrafts = {};
@@ -1598,50 +1597,79 @@
     } catch (e) {
       console.error('Failed to load drafts:', e);
     }
-    
-    // Per-agent message cache - keyed by agent to prevent cross-contamination
-    const agentMessageCaches = new Map(); // agentKey -> messages[]
-    
-    // Helper to get/set cache for specific agent
-    function getAgentCache(agentKey) {
-      if (!agentMessageCaches.has(agentKey)) {
-        agentMessageCaches.set(agentKey, []);
+
+    const messageCache = new Map(); // agentKey -> Message[] (populated from server only)
+    const streamingState = new Map(); // agentKey -> { el, text }
+    const unreadCounts = new Map(); // agentKey -> number
+
+    // Chat v2: WebSocket to backend for message push
+    let chatWs = null;
+    let chatWsReconnectTimer = null;
+
+    function chatWsConnect() {
+      if (chatWs && chatWs.readyState <= 1) return;
+      const wsProto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+      const url = `${wsProto}//${window.location.host}/ws`;
+      console.log('[Chat-WS] Connecting to', url);
+      chatWs = new WebSocket(url);
+
+      chatWs.onopen = () => {
+        console.log('[Chat-WS] Connected');
+        if (currentAgentKey) {
+          chatWs.send(JSON.stringify({ type: 'subscribe', agent: currentAgentKey }));
+        }
+      };
+
+      chatWs.onmessage = (event) => {
+        let msg;
+        try { msg = JSON.parse(event.data); } catch { return; }
+
+        if (msg.type === 'history') {
+          handleHistory(msg.agent, msg.messages);
+        }
+
+        if (msg.type === 'message_committed') {
+          handleNewMessage(msg.agent, msg.message);
+        }
+      };
+
+      chatWs.onclose = () => {
+        console.log('[Chat-WS] Disconnected, reconnecting in 3s');
+        chatWsReconnectTimer = setTimeout(chatWsConnect, 3000);
+      };
+
+      chatWs.onerror = (e) => {
+        console.error('[Chat-WS] Error:', e);
+      };
+    }
+
+    chatWsConnect();
+
+    function handleHistory(agent, messages) {
+      messageCache.set(agent, messages);
+      if (agent === currentAgentKey) {
+        renderAllMessages(agent, messages);
       }
-      return agentMessageCaches.get(agentKey);
-    }
-    function setAgentCache(agentKey, messages) {
-      agentMessageCaches.set(agentKey, messages);
-    }
-    
-    // Legacy compat - but now tied to currentAgentKey
-    let chatMessagesCache = [];
-
-    // Per-agent streaming state
-    const agentStreamingState = new Map(); // agentKey -> { el, text }
-
-    // Track unread messages per agent
-    const unreadMessages = new Map(); // agentKey -> count
-
-    // Mark agent as having unread messages
-    function markUnread(agentKey) {
-      if (agentKey === currentAgentKey) return; // Don't mark as unread if we're viewing it
-
-      const count = (unreadMessages.get(agentKey) || 0) + 1;
-      unreadMessages.set(agentKey, count);
-
-      const agentEl = document.querySelector(`.agent.${agentKey}`);
-      if (agentEl) {
-        agentEl.classList.add('has-unread');
-      }
     }
 
-    // Clear unread for an agent
-    function clearUnread(agentKey) {
-      unreadMessages.set(agentKey, 0);
+    function handleNewMessage(agent, message) {
+      if (!messageCache.has(agent)) messageCache.set(agent, []);
+      const cache = messageCache.get(agent);
 
-      const agentEl = document.querySelector(`.agent.${agentKey}`);
-      if (agentEl) {
-        agentEl.classList.remove('has-unread');
+      // Dedupe by seq
+      if (cache.length > 0 && cache[cache.length - 1].seq >= message.seq) return;
+      cache.push(message);
+
+      if (agent === currentAgentKey) {
+        if (message.isBot) {
+          clearStreamingEl(agent);
+        }
+        appendMessageEl(message);
+        autoScroll();
+      } else {
+        unreadCounts.set(agent, (unreadCounts.get(agent) || 0) + 1);
+        const agentEl = document.querySelector(`.agent.${agent}`);
+        if (agentEl) agentEl.classList.add('has-unread');
       }
     }
 
@@ -1650,60 +1678,75 @@
       return `agent:${agentKey}:webchat:user`;
     }
 
-    // Render messages in chat panel - REQUIRES agentKey to prevent cross-agent contamination
-    function renderChatMessages(messages, forAgentKey, forGeneration) {
-      // CRITICAL GUARD: Never render if this isn't for the current agent/generation
-      if (forAgentKey !== currentAgentKey) {
-        console.log('[RENDER] BLOCKED - agent mismatch:', forAgentKey, 'vs current:', currentAgentKey);
-        return;
-      }
-      if (forGeneration !== undefined && forGeneration !== chatLoadGeneration) {
-        console.log('[RENDER] BLOCKED - generation mismatch:', forGeneration, 'vs current:', chatLoadGeneration);
-        return;
-      }
-      
-      // Filter out coordination signals and their streaming fragments
-      const visibleMessages = messages.filter(m => {
-        if (!m.isBot) return true; // Never filter user messages
+    function createMessageEl(m) {
+      const isUser = !m.isBot;
+      const agentEl = document.querySelector(`.agent.${currentAgentKey}`);
+      const agentEmoji = agentEl?.dataset?.emoji || '🤖';
+
+      const el = document.createElement('div');
+      el.className = `message-bubble ${isUser ? 'you' : 'them'}`;
+      el.dataset.seq = m.seq;
+      el.innerHTML = `
+        <div class="bubble-avatar ${isUser ? 'jeremy' : 'bot'}">${isUser ? '👑' : agentEmoji}</div>
+        <div class="bubble-content">
+          <div class="bubble-text">${isUser ? escapeHtml(m.content || '') : formatMarkdown(m.content || '')}</div>
+          <div class="bubble-time">${m.timestampFormatted || ''}</div>
+        </div>`;
+      return el;
+    }
+
+    function renderAllMessages(agent, messages) {
+      const filtered = messages.filter(m => {
+        if (!m.isBot) return true;
         const content = (m.content || '').trim();
-        if (/^(NO_REPLY|NO_?|HEARTBEAT_OK|HEARTBEAT_?|ANNOUNCE_SKIP|ANNOUNCE_?)\s*$/i.test(content)) return false;
-        return true;
+        return !/^(NO_REPLY|NO_?|HEARTBEAT_OK|HEARTBEAT_?|ANNOUNCE_SKIP|ANNOUNCE_?)\s*$/i.test(content);
       });
-      
-      console.log('[RENDER] Rendering', visibleMessages.length, 'messages for agent:', forAgentKey, 'gen:', forGeneration);
-      
-      if (visibleMessages.length === 0) {
+
+      if (filtered.length === 0) {
         chatMessages.innerHTML = '<div style="text-align: center; color: #888; padding: 20px;">Start a conversation...</div>';
         return;
       }
 
-      // Get the emoji for the SPECIFIC agent we're rendering for (not selectedAgent which might be stale)
-      const agentEl = document.querySelector(`.agent.${forAgentKey}`);
-      const agentEmoji = agentEl?.dataset?.emoji || '🤖';
+      chatMessages.innerHTML = '';
+      const fragment = document.createDocumentFragment();
+      for (const m of filtered) {
+        fragment.appendChild(createMessageEl(m));
+      }
+      chatMessages.appendChild(fragment);
 
-      chatMessages.innerHTML = visibleMessages.map((m) => {
-        const isUser = !m.isBot;
-        const bubbleClass = isUser ? 'you' : 'them';
-        const avatarClass = isUser ? 'jeremy' : 'bot';
-        const avatarEmoji = isUser ? '👑' : agentEmoji;
+      const ss = streamingState.get(agent);
+      if (ss?.el) {
+        chatMessages.appendChild(ss.el);
+      }
 
-        return `
-          <div class="message-bubble ${bubbleClass}">
-            <div class="bubble-avatar ${avatarClass}">${avatarEmoji}</div>
-            <div class="bubble-content">
-              <div class="bubble-text">${formatMarkdown(m.content || '')}</div>
-              <div class="bubble-time">${m.timestampFormatted || ''}</div>
-            </div>
-          </div>`;
-      }).join('');
+      setTimeout(() => renderPendingCharts(), 50);
 
-      // Scroll to bottom after DOM renders
       requestAnimationFrame(() => {
         chatMessages.scrollTop = chatMessages.scrollHeight;
       });
+    }
 
-      // Render any charts that were inserted
+    function appendMessageEl(message) {
+      if (message.isBot) {
+        const content = (message.content || '').trim();
+        if (/^(NO_REPLY|NO_?|HEARTBEAT_OK|HEARTBEAT_?|ANNOUNCE_SKIP|ANNOUNCE_?)\s*$/i.test(content)) return;
+      }
+
+      const placeholder = chatMessages.querySelector('div[style*="text-align: center"]');
+      if (placeholder) placeholder.remove();
+
+      chatMessages.appendChild(createMessageEl(message));
       setTimeout(() => renderPendingCharts(), 50);
+    }
+
+    function autoScroll() {
+      const threshold = 150;
+      const distFromBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight;
+      if (distFromBottom < threshold) {
+        requestAnimationFrame(() => {
+          chatMessages.scrollTop = chatMessages.scrollHeight;
+        });
+      }
     }
 
     // Chart ID counter for unique chart containers
@@ -1975,48 +2018,16 @@
       return div.innerHTML;
     }
 
-    // Append a user message bubble to the chat
-    function appendUserMessage(text) {
-      console.log('[APPEND] User message:', text.substring(0, 50));
-      const ts = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-      // Remove placeholder if present
-      const placeholder = chatMessages.querySelector('.chat-loading, div[style*="text-align: center"]');
-      if (placeholder) placeholder.remove();
+    function getOrCreateStreamingEl(agentKey) {
+      let ss = streamingState.get(agentKey);
+      if (ss?.el) return ss.el;
 
-      const el = document.createElement('div');
-      el.className = 'message-bubble you';
-      el.innerHTML = `
-        <div class="bubble-avatar jeremy">👑</div>
-        <div class="bubble-content">
-          <div class="bubble-text">${escapeHtml(text)}</div>
-          <div class="bubble-time">${ts}</div>
-        </div>`;
-      chatMessages.appendChild(el);
-      chatMessages.scrollTop = chatMessages.scrollHeight;
-    }
-
-    // Get or create streaming state for an agent
-    function getStreamingState(agentKey) {
-      if (!agentStreamingState.has(agentKey)) {
-        agentStreamingState.set(agentKey, { el: null, text: '' });
-      }
-      return agentStreamingState.get(agentKey);
-    }
-
-    // Create or get the streaming message element for agent response
-    function getStreamingEl(agentKey) {
-      const state = getStreamingState(agentKey);
-      if (state.el) return state.el;
-
-      const ts = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-      
-      // Get the correct emoji for THIS agent, not the currently selected one
       const agentEl = document.querySelector(`.agent.${agentKey}`);
       const emoji = agentEl?.dataset?.emoji || '🤖';
+      const ts = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 
       const el = document.createElement('div');
-      el.className = 'message-bubble them';
-      el.setAttribute('data-agent-key', agentKey); // Mark which agent this belongs to
+      el.className = 'message-bubble them streaming';
       el.innerHTML = `
         <div class="bubble-avatar bot">${emoji}</div>
         <div class="bubble-content">
@@ -2024,62 +2035,37 @@
           <div class="bubble-time">${ts}</div>
         </div>`;
 
-      // Only append if we're viewing this agent
+      ss = { el, text: '' };
+      streamingState.set(agentKey, ss);
+
       if (currentAgentKey === agentKey) {
         chatMessages.appendChild(el);
-        chatMessages.scrollTop = chatMessages.scrollHeight;
+        autoScroll();
       }
 
-      state.el = el;
-      state.text = '';
-      state.finalized = false; // Reset finalized flag for new streaming
       return el;
     }
 
-    // Update streaming text - each delta is the full accumulated text, not a diff
-    function updateStreamingText(agentKey, text) {
-      const state = getStreamingState(agentKey);
-      // Only accept text at least as long as current — prevents the 'final' event's
-      // potentially shorter message from overwriting the full accumulated response
-      if (text.length < state.text.length) return;
-      state.text = text;
-      const el = getStreamingEl(agentKey);
-      const textEl = el.querySelector('.streaming-text');
+    function updateStreaming(agentKey, text) {
+      const ss = streamingState.get(agentKey);
+      if (!ss) {
+        getOrCreateStreamingEl(agentKey);
+        return updateStreaming(agentKey, text);
+      }
+      if (text.length < ss.text.length) return;
+      ss.text = text;
+      const textEl = ss.el.querySelector('.streaming-text');
       if (textEl) {
-        textEl.innerHTML = formatMarkdown(state.text);
-        // Render any charts that were inserted
+        textEl.innerHTML = formatMarkdown(text);
         setTimeout(() => renderPendingCharts(), 50);
       }
-
-      // Only scroll if we're viewing this agent
-      if (currentAgentKey === agentKey) {
-        chatMessages.scrollTop = chatMessages.scrollHeight;
-      }
+      if (currentAgentKey === agentKey) autoScroll();
     }
 
-    // Finalize streaming message
-    function finalizeStreaming(agentKey, generation) {
-      const state = getStreamingState(agentKey);
-      if (state.el) {
-        // Only remove if this element is in the DOM
-        if (state.el.parentElement) {
-          state.el.remove();
-        }
-      }
-      state.el = null;
-      state.text = '';
-      state.finalized = false;
-      
-      // Only re-render if we're currently viewing THIS agent AND generation matches
-      // Don't re-render if another agent finished while we're viewing someone else
-      if (currentAgentKey === agentKey && generation === chatLoadGeneration) {
-        const cache = getAgentCache(agentKey);
-        if (cache.length > 0) {
-          // Also update legacy cache for compatibility
-          chatMessagesCache = cache;
-          renderChatMessages(cache, agentKey, generation);
-        }
-      }
+    function clearStreamingEl(agentKey) {
+      const ss = streamingState.get(agentKey);
+      if (ss?.el?.parentElement) ss.el.remove();
+      streamingState.delete(agentKey);
     }
 
     // Save draft message for current agent
@@ -2105,230 +2091,73 @@
 
     // Load chat for an agent
     async function loadAgentChat(agentKey) {
-      console.log('[LOAD] loadAgentChat called for:', agentKey);
+      if (currentAgentKey === agentKey) return;
 
-      // Prevent reloading if we're already viewing this agent
-      if (currentAgentKey === agentKey) {
-        console.log('[LOAD] Already viewing this agent, skipping reload');
-        return;
-      }
-
-      // CRITICAL: Increment generation counter FIRST to invalidate ALL in-flight async operations
-      const thisGeneration = ++chatLoadGeneration;
-      console.log('[LOAD] Starting load generation:', thisGeneration, 'for agent:', agentKey);
-
-      // CRITICAL: Stop polling IMMEDIATELY to prevent race conditions
-      stopChatPolling();
-
-      // Clear old agent's WebSocket callbacks to prevent stale updates
-      if (currentAgentKey) {
-        const oldSessionKey = agentSessionKey(currentAgentKey);
-        gwChatCallbacks.delete(oldSessionKey);
-        console.log('[LOAD] Cleared callback for previous agent:', currentAgentKey);
-      }
-
-      // Save draft for previous agent BEFORE changing currentAgentKey
       saveDraftForCurrentAgent();
 
-      // CRITICAL: Set currentAgentKey BEFORE any async operations
       currentAgentKey = agentKey;
 
-      // CRITICAL: Clear BOTH legacy cache AND per-agent cache to prevent stale renders
-      chatMessagesCache = [];
-      // Don't clear the per-agent cache - we want to preserve history for when we come back
-
-      // Load draft for new agent
       loadDraftForAgent(agentKey);
 
-      // Clear unread badge for this agent
-      clearUnread(agentKey);
+      // Clear unread
+      unreadCounts.set(agentKey, 0);
+      const agentEl = document.querySelector(`.agent.${agentKey}`);
+      if (agentEl) agentEl.classList.remove('has-unread');
 
-      // Update channel name
       const channelName = agentChannels[agentKey]?.name || `#${agentKey}`;
       document.getElementById('chatChannelName').textContent = channelName;
 
-      // CRITICAL: Show loading state immediately - this is the ONLY thing visible until data arrives
       chatMessages.innerHTML = '<div style="text-align: center; color: #666; padding: 20px;">Loading messages...</div>';
 
-      let messagesRendered = false;
-
-      // Load from server cache FIRST — it has correct isBot flags
-      try {
-        const response = await fetch(`${API_BASE}/chat/${agentKey}`);
-        const data = await response.json();
-
-        // RACE CONDITION FIX: Check BOTH generation AND currentAgentKey
-        if (chatLoadGeneration !== thisGeneration || currentAgentKey !== agentKey) {
-          console.log('[LOAD] Stale after cache fetch - discarding');
-          return;
-        }
-
-        if (data.ok && data.messages && data.messages.length > 0) {
-          setAgentCache(agentKey, data.messages);
-          chatMessagesCache = data.messages;
-          renderChatMessages(data.messages, agentKey, thisGeneration);
-          messagesRendered = true;
-        }
-      } catch (e) {
-        console.log('Cache fetch failed:', e);
+      // Render cached messages immediately while subscribe refreshes
+      const cached = messageCache.get(agentKey);
+      if (cached && cached.length > 0) {
+        renderAllMessages(agentKey, cached);
       }
 
-      // Only fall back to Gateway history if server cache was empty
-      if (!messagesRendered && gwConnected) {
-        try {
-          const history = await gwRequest('chat.history', {
-            sessionKey: agentSessionKey(agentKey),
-            limit: 50
-          });
-
-          if (chatLoadGeneration !== thisGeneration || currentAgentKey !== agentKey) {
-            console.log('[LOAD] Stale after Gateway request - discarding');
-            return;
-          }
-
-          if (history && history.messages && history.messages.length > 0) {
-            const gwMessages = history.messages
-              .filter(m => m.role === 'user' || m.role === 'assistant' || m.role === 'model' || m.role === 'bot')
-              .map(m => {
-                const content = extractMessageText(m);
-                const isBot = m.role !== 'user';
-                return {
-                  id: m.id || `gw-${Date.now()}-${Math.random()}`,
-                  content,
-                  author: isBot ? (agentKey.charAt(0).toUpperCase() + agentKey.slice(1)) : 'Jeremy',
-                  authorId: isBot ? agentKey : 'user',
-                  isBot,
-                  timestamp: m.timestamp || Date.now(),
-                  timestampFormatted: m.timestamp
-                    ? new Date(m.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
-                    : ''
-                };
-              })
-              .filter(m => m.content.trim());
-
-            if (gwMessages.length > 0) {
-              setAgentCache(agentKey, gwMessages);
-              chatMessagesCache = gwMessages;
-              renderChatMessages(gwMessages, agentKey, thisGeneration);
-              messagesRendered = true;
-            }
-          }
-        } catch (e) {
-          console.log('[GW] History fetch failed:', e.message || e);
-        }
+      // Subscribe via chat WebSocket
+      if (chatWs && chatWs.readyState === 1) {
+        chatWs.send(JSON.stringify({ type: 'subscribe', agent: agentKey }));
       }
 
-      // Show empty state if nothing rendered
-      if (!messagesRendered && chatLoadGeneration === thisGeneration && currentAgentKey === agentKey) {
-        chatMessages.innerHTML = '<div style="text-align: center; color: #666; padding: 20px;">Start a conversation...</div>';
-      }
-
-      // Final staleness check before setting up streaming callbacks
-      if (chatLoadGeneration !== thisGeneration || currentAgentKey !== agentKey) {
-        console.log('[LOAD] Stale at end of load, not setting up callbacks');
-        return;
-      }
-
-      // If this agent has a pending streaming message, append it now
-      const state = getStreamingState(agentKey);
-      if (state.el && !state.el.parentElement) {
-        chatMessages.appendChild(state.el);
-        chatMessages.scrollTop = chatMessages.scrollHeight;
-      }
-
-      // Register streaming callback for this agent's session
-      // Capture BOTH generation AND agentKey to ensure callbacks don't fire for stale sessions
+      // Register Gateway streaming callback
       const sessionKey = agentSessionKey(agentKey);
-      const callbackGeneration = thisGeneration;
-      const callbackAgentKey = agentKey;
-      console.log('[CALLBACK] Registering callback for:', sessionKey, 'generation:', callbackGeneration);
-      
-      gwChatCallbacks.set(sessionKey, {
-        onDelta: (text, payload) => {
-          // Check BOTH generation AND agent before processing delta
-          if (chatLoadGeneration !== callbackGeneration || currentAgentKey !== callbackAgentKey) {
-            console.log('[CALLBACK] Ignoring stale delta - gen:', callbackGeneration, '/', chatLoadGeneration, 'agent:', callbackAgentKey, '/', currentAgentKey);
-            return;
-          }
-          updateStreamingText(callbackAgentKey, text);
-        },
-        onFinal: (payload) => {
-          // Check BOTH generation AND agent before processing final
-          const isStale = chatLoadGeneration !== callbackGeneration || currentAgentKey !== callbackAgentKey;
-          
-          if (isStale) {
-            console.log('[FINAL] Ignoring stale final - gen:', callbackGeneration, '/', chatLoadGeneration, 'agent:', callbackAgentKey, '/', currentAgentKey);
-            // Clean up streaming state but DON'T render - pass undefined generation to skip render
-            finalizeStreaming(callbackAgentKey, undefined);
-            return;
-          }
-          
-          // Save final agent response to server cache
-          const state = getStreamingState(callbackAgentKey);
-          console.log('[FINAL] onFinal called for:', callbackAgentKey, 'text length:', state.text?.length || 0, 'finalized:', state.finalized);
-          
-          if (state.text && !state.finalized) {
-            // Don't save coordination signals
-            const trimmed = state.text.trim();
-            if (/^(NO_REPLY|NO_?|HEARTBEAT_OK|HEARTBEAT_?|ANNOUNCE_SKIP|ANNOUNCE_?)\s*$/i.test(trimmed)) {
-              state.finalized = true;
-              finalizeStreaming(callbackAgentKey, callbackGeneration);
-              return;
-            }
-            state.finalized = true; // Prevent double processing
-            console.log('[FINAL] Saving agent reply for:', callbackAgentKey);
-            
-            // Add to local cache to prevent poll from re-adding
-            const agentMessage = {
-              id: `agent-${Date.now()}`,
-              content: state.text,
-              author: callbackAgentKey.charAt(0).toUpperCase() + callbackAgentKey.slice(1),
-              authorId: callbackAgentKey,
-              isBot: true,
-              timestamp: Date.now(),
-              timestampFormatted: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
-            };
-            
-            // Add to BOTH caches (with dedupe — Gateway may resend/retry the same response)
-            const agentCache = getAgentCache(callbackAgentKey);
-            const lastMsg = agentCache[agentCache.length - 1];
-            if (lastMsg && lastMsg.isBot && (Date.now() - lastMsg.timestamp < 30000) &&
-                (lastMsg.content === state.text || state.text.includes(lastMsg.content))) {
-              // Replace the previous partial/duplicate instead of appending
-              agentCache[agentCache.length - 1] = agentMessage;
-              const cmIdx = chatMessagesCache.indexOf(lastMsg);
-              if (cmIdx !== -1) chatMessagesCache[cmIdx] = agentMessage;
-              else chatMessagesCache.push(agentMessage);
-            } else {
-              agentCache.push(agentMessage);
-              chatMessagesCache.push(agentMessage);
-            }
-            
-            fetch(`${API_BASE}/messages/${callbackAgentKey}/agent-reply`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ content: state.text })
-            }).then(r => {
-              if (!r.ok) console.error('[SAVE] Failed to cache agent reply:', r.status);
-              else console.log('[SAVE] Agent reply cached for:', callbackAgentKey);
-            }).catch(e => console.error('[SAVE] Error caching agent reply:', e));
+      gwChatCallbacks.clear();
 
-            // Mark as unread if we're not currently viewing this agent
-            markUnread(callbackAgentKey);
+      gwChatCallbacks.set(sessionKey, {
+        onDelta: (text) => {
+          updateStreaming(agentKey, text);
+        },
+        onFinal: () => {
+          const ss = streamingState.get(agentKey);
+          if (!ss?.text) {
+            clearStreamingEl(agentKey);
+            return;
           }
-          
-          // Finalize with generation to allow render
-          finalizeStreaming(callbackAgentKey, callbackGeneration);
+
+          const trimmed = ss.text.trim();
+          if (/^(NO_REPLY|NO_?|HEARTBEAT_OK|HEARTBEAT_?|ANNOUNCE_SKIP|ANNOUNCE_?)\s*$/i.test(trimmed)) {
+            clearStreamingEl(agentKey);
+            return;
+          }
+
+          const idempotencyKey = `agent-${agentKey}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+          fetch(`${API_BASE}/chat/${agentKey}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              content: ss.text,
+              role: 'assistant',
+              idempotencyKey,
+              timestamp: Date.now()
+            })
+          }).catch(e => console.error('[Chat-v2] Failed to commit agent reply:', e));
         },
         onError: (payload) => {
           console.error('[GW] Chat error:', payload);
-          // Clean up without rendering
-          finalizeStreaming(callbackAgentKey, undefined);
+          clearStreamingEl(agentKey);
         }
       });
-
-      // Start polling only AFTER everything is set up
-      startChatPolling();
     }
 
     // Parse natural language for movement commands
@@ -2459,18 +2288,15 @@
 
       console.log('[SEND] Sending message:', text.substring(0, 50));
 
-      // Check for natural language movement triggers
       const nlResult = parseNaturalLanguage(text, currentAgentKey);
 
-      // Check for special slash commands
       const cmdResult = handleSpecialCommands(text);
       if (cmdResult.handled) {
         chatInput.value = '';
-        chatInput.style.height = 'auto'; // Reset height
-        clearTimeout(draftSaveTimer); // Cancel pending draft save
-        delete messageDrafts[currentAgentKey]; // Clear draft
-        localStorage.setItem('messageDrafts', JSON.stringify(messageDrafts)); // Persist clear
-        // Show system message
+        chatInput.style.height = 'auto';
+        clearTimeout(draftSaveTimer);
+        delete messageDrafts[currentAgentKey];
+        localStorage.setItem('messageDrafts', JSON.stringify(messageDrafts));
         const sysEl = document.createElement('div');
         sysEl.style.cssText = 'text-align: center; padding: 12px; margin: 8px 0; background: rgba(14, 165, 233, 0.1); border-radius: 8px; font-size: 0.85rem;';
         sysEl.innerHTML = formatMarkdown(cmdResult.response);
@@ -2480,72 +2306,43 @@
         return;
       }
 
-      // Clear input immediately (but don't disable it)
       chatInput.value = '';
-      chatInput.style.height = 'auto'; // Reset height after sending
-
-      // Cancel any pending draft save timer
+      chatInput.style.height = 'auto';
       clearTimeout(draftSaveTimer);
-      
-      // Clear draft for this agent and persist to localStorage
       delete messageDrafts[currentAgentKey];
       localStorage.setItem('messageDrafts', JSON.stringify(messageDrafts));
 
-      // Show user message immediately
-      appendUserMessage(text);
-
-      // Add to local cache to prevent poll from re-adding
-      const userMessage = {
-        id: `user-${Date.now()}`,
-        content: text,
-        author: 'Jeremy',
-        authorId: 'user',
-        isBot: false,
-        timestamp: Date.now(),
-        timestampFormatted: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
-      };
-      // Update BOTH caches (with dedupe — Gateway echo or retry may duplicate)
-      const agentCache = getAgentCache(currentAgentKey);
-      const lastMsg = agentCache[agentCache.length - 1];
-      if (lastMsg && !lastMsg.isBot && lastMsg.content === text && (Date.now() - lastMsg.timestamp < 10000)) {
-        // Skip duplicate user message
-      } else {
-        agentCache.push(userMessage);
-        chatMessagesCache.push(userMessage);
-      }
-
-      // Save to server cache (for cross-device sync) - cache only, no gateway send
+      // Commit user message to server
+      const idempotencyKey = `user-${Date.now()}-${Math.random().toString(36).slice(2)}`;
       fetch(`${API_BASE}/chat/${currentAgentKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, cacheOnly: true })
-      }).catch(e => console.log('Failed to cache message:', e));
+        body: JSON.stringify({
+          content: text,
+          role: 'user',
+          idempotencyKey,
+          timestamp: Date.now()
+        })
+      }).catch(e => console.error('[Chat-v2] Failed to commit user message:', e));
 
-      // Send via Gateway WebSocket (sole delivery path)
+      // Send via Gateway for agent delivery
       if (gwConnected) {
         try {
           const sessionKey = agentSessionKey(currentAgentKey);
-          const idempKey = `office-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-          console.log('[SEND] Sending to Gateway with sessionKey:', sessionKey);
-          console.log('[SEND] Idempotency key:', idempKey);
-
           await gwRequest('chat.send', {
             sessionKey,
             message: text,
-            idempotencyKey: idempKey
+            idempotencyKey
           });
-          // Response streaming handled by gwChatCallbacks
         } catch (e) {
           console.error('[GW] chat.send failed:', e);
-          // Show error in chat
           const errEl = document.createElement('div');
           errEl.style.cssText = 'text-align: center; color: #f59e0b; padding: 8px; font-size: 0.8rem;';
           errEl.textContent = `Failed to send: ${e.message || 'WebSocket not connected'}`;
           chatMessages.appendChild(errEl);
-          chatMessages.scrollTop = chatMessages.scrollHeight;
+          autoScroll();
         }
       } else {
-        // Fallback: show not connected message
         const errEl = document.createElement('div');
         errEl.style.cssText = 'text-align: center; color: #f59e0b; padding: 8px; font-size: 0.8rem;';
         errEl.textContent = 'Gateway not connected. Reconnecting...';
@@ -2553,11 +2350,8 @@
         gwConnect();
       }
 
-      // Keep input focused for quick follow-ups
       chatInput.focus();
     }
-
-    // Chat sync polling is initialized later after loadAgentChat is defined
 
     // Auto-resize textarea as user types
     function autoResizeTextarea() {
@@ -2724,112 +2518,6 @@
         localStorage.setItem('sidePanelWidth', sidePanel.offsetWidth);
       }
     });
-
-    // --- Multi-Session Sync Polling ---
-    // Polls server cache to sync messages across devices/tabs
-    let chatPollInterval = null;
-    let lastMessageIds = new Set();
-
-    async function pollChatMessages() {
-      if (!currentAgentKey) return;
-      
-      // Capture the agent key AND generation at request time for staleness check
-      const requestedAgentKey = currentAgentKey;
-      const requestedGeneration = chatLoadGeneration;
-      
-      try {
-        const response = await fetch(`${API_BASE}/chat/${requestedAgentKey}`);
-        if (!response.ok) return;
-        
-        const data = await response.json();
-        if (!data.ok || !data.messages) return;
-        
-        // RACE CONDITION FIX: Check BOTH agent key AND generation
-        // Must match EXACTLY to prevent any cross-agent contamination
-        if (currentAgentKey !== requestedAgentKey || chatLoadGeneration !== requestedGeneration) {
-          console.log('[Sync] Stale poll response - agent:', requestedAgentKey, '/', currentAgentKey, 'gen:', requestedGeneration, '/', chatLoadGeneration);
-          return; // Discard stale data
-        }
-        
-        const serverMessages = data.messages;
-        
-        // Get the current cache for THIS specific agent
-        const currentCache = getAgentCache(requestedAgentKey);
-        
-        // Compare by content fingerprint to detect true new messages
-        // (avoids duplicates from Gateway vs server cache having different IDs)
-        const getFingerprint = (m) => `${m.isBot ? 'bot' : 'user'}:${(m.content || '').substring(0, 100)}`;
-        
-        const currentFingerprints = new Set(currentCache.map(getFingerprint));
-        const serverFingerprints = serverMessages.map(getFingerprint);
-        
-        // Skip re-render if counts match and last message content is the same
-        // This prevents the "ghost flash" when Gateway history and server cache
-        // have the same messages but different IDs/formatting
-        if (serverMessages.length === currentCache.length && serverMessages.length > 0) {
-          const lastServer = (serverMessages[serverMessages.length - 1].content || '').trim();
-          const lastLocal = (currentCache[currentCache.length - 1].content || '').trim();
-          if (lastServer === lastLocal) {
-            return; // Same content, no re-render needed
-          }
-        }
-
-        // Check if server has messages we don't have (by content, not ID)
-        let hasNewContent = false;
-        for (const fp of serverFingerprints) {
-          if (!currentFingerprints.has(fp)) {
-            hasNewContent = true;
-            break;
-          }
-        }
-
-        // Only re-render if server has genuinely NEW content we don't have
-        // Don't overwrite if we have more messages than server (e.g., Gateway history has more)
-        if (hasNewContent && serverMessages.length > currentCache.length) {
-          // Final staleness check before rendering - must still match
-          if (currentAgentKey !== requestedAgentKey || chatLoadGeneration !== requestedGeneration) {
-            console.log('[Sync] Stale before render, discarding');
-            return;
-          }
-          console.log(`[Sync] New content detected for ${requestedAgentKey}, updating chat`);
-          // Update BOTH caches
-          setAgentCache(requestedAgentKey, serverMessages);
-          chatMessagesCache = serverMessages;
-          renderChatMessages(serverMessages, requestedAgentKey, requestedGeneration);
-          lastMessageIds = new Set(serverMessages.map(m => m.id));
-        }
-      } catch (e) {
-        console.log('[Sync] Poll error:', e.message);
-      }
-    }
-
-    // Start chat polling (called when agent is selected)
-    function startChatPolling() {
-      if (chatPollInterval) clearInterval(chatPollInterval);
-      // Initialize with current message IDs from the CURRENT agent's cache
-      const currentCache = currentAgentKey ? getAgentCache(currentAgentKey) : [];
-      lastMessageIds = new Set(currentCache.map(m => m.id));
-      // Delay first poll by 5s to let Gateway history fully render before polling can interfere
-      const startGeneration = chatLoadGeneration;
-      setTimeout(() => {
-        // Only start if we're still on the same agent load (user didn't switch)
-        if (chatLoadGeneration !== startGeneration) return;
-        chatPollInterval = setInterval(pollChatMessages, 3000);
-        console.log('[Sync] Chat polling started for:', currentAgentKey);
-      }, 5000);
-    }
-
-    // Stop chat polling
-    function stopChatPolling() {
-      if (chatPollInterval) {
-        clearInterval(chatPollInterval);
-        chatPollInterval = null;
-        console.log('[Sync] Chat polling stopped');
-      }
-    }
-
-    // Note: startChatPolling() is now called at the end of loadAgentChat itself
-    // to ensure it only starts AFTER the generation check passes and all setup is complete
 
     // --- Mobile: Auto-open Isla's chat on load ---
     if (window.innerWidth <= 768) {
