@@ -406,7 +406,7 @@ async function sendPushNotification(agentKey, message) {
   const messagePreview = message.substring(0, 100) + (message.length > 100 ? '...' : '');
   
   const payload = JSON.stringify({
-    title: `${agentName} responded`,
+    title: agentName, // iOS iMessage pattern: just the sender name
     body: messagePreview,
     agentKey: agentKey,
     url: `/?agent=${agentKey}`,
@@ -726,13 +726,8 @@ const server = http.createServer(async (req, res) => {
         const idempotencyKey = `user-${now}-${Math.random().toString(36).slice(2)}`;
         const result = chatDb.addMessage(agentKey, 'user', content, now, idempotencyKey);
 
-        // 2. Broadcast to all subscribed browser clients
-        if (!result.duplicate) {
-          const clientMsg = formatMessageForClient({
-            seq: result.seq, agent: agentKey, role: 'user', content, timestamp: now
-          });
-          broadcastMessage(agentKey, clientMsg);
-        }
+        // 2. DON'T broadcast - client already has optimistic message
+        // (Broadcasts from Gateway for external sources still work via event handler)
 
         // 3. Send to Gateway for agent delivery
         if (!gwConnected) {
@@ -1382,14 +1377,24 @@ function formatMessageForClient(row) {
   const metadata = row.metadata ? (typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata) : {};
   const isAgentMessage = metadata.source === 'agent';
   
+  // Extract sender name from sourceSession (e.g., "agent:harper:webchat:user" -> "Harper")
+  let senderName = null;
+  if (isAgentMessage && metadata.sourceSession) {
+    const match = metadata.sourceSession.match(/^agent:(\w+):/);
+    if (match) {
+      senderName = match[1].charAt(0).toUpperCase() + match[1].slice(1);
+    }
+  }
+  
   return {
     seq: row.seq,
     agent: row.agent,
     content: row.content,
     isBot: row.role === 'assistant',
     isAgentMessage: isAgentMessage,
+    senderName: senderName,  // The actual agent who sent the message
     author: row.role === 'user' 
-      ? (isAgentMessage ? 'Agent' : 'Jeremy')
+      ? (isAgentMessage ? (senderName || 'Agent') : 'Jeremy')
       : (row.agent.charAt(0).toUpperCase() + row.agent.slice(1)),
     authorId: row.role === 'user' ? 'user' : row.agent,
     timestamp: row.timestamp,

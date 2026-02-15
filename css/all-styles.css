@@ -696,26 +696,6 @@
 
     .message-bubble.you {
       align-self: flex-end;
-      flex-direction: row-reverse;
-    }
-
-    .bubble-avatar {
-      width: 32px;
-      height: 32px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 16px;
-      flex-shrink: 0;
-    }
-
-    .bubble-avatar.bot {
-      background: linear-gradient(135deg, #0ea5e9, #06b6d4);
-    }
-
-    .bubble-avatar.jeremy {
-      background: linear-gradient(135deg, #f43f5e, #ec4899);
     }
 
     .bubble-content {
@@ -752,6 +732,23 @@
       background: linear-gradient(135deg, #0ea5e9, #0284c7);
       color: #fff;
       border-bottom-right-radius: 4px;
+    }
+
+    .bubble-sender {
+      font-size: 0.85rem;  /* Larger, more prominent */
+      font-weight: 700;     /* Bolder */
+      color: #d1d5db;       /* Brighter color */
+      padding: 0 8px 4px 8px;
+      margin-bottom: 4px;   /* More spacing */
+    }
+
+    .message-bubble.you .bubble-sender {
+      text-align: right;
+      color: #60a5fa;  /* Brighter blue */
+    }
+
+    .message-bubble.them .bubble-sender {
+      color: #34d399;  /* Brighter green */
     }
 
     .bubble-time {

@@ -1875,10 +1875,31 @@
       const lastReal = cache.filter(m => !m._optimistic).pop();
       if (lastReal && lastReal.seq >= message.seq) return;
 
+      // Check for duplicate by content + isBot within last 10 seconds (prevents echo)
+      const recentDuplicate = cache.find(m => 
+        m.content === message.content && 
+        m.isBot === message.isBot && 
+        Math.abs(m.timestamp - message.timestamp) < 10000 &&
+        !m._optimistic
+      );
+      if (recentDuplicate) {
+        console.log('[Chat] Ignoring duplicate message (same content within 10s)');
+        return;
+      }
+
       // Replace optimistic entry with matching content (works for both user and bot messages)
       const optIdx = cache.findIndex(m => m._optimistic && m.content === message.content);
       if (optIdx !== -1) {
+        const optimisticSeq = cache[optIdx].seq; // Save old seq to find DOM element
         cache[optIdx] = message; // replace optimistic with real
+        
+        // Update the DOM element with the real message data
+        if (agent === currentAgentKey) {
+          const existingEl = chatMessages.querySelector(`[data-seq="${optimisticSeq}"]`);
+          if (existingEl) {
+            existingEl.dataset.seq = message.seq; // Update to real seq
+          }
+        }
         return; // already displayed
       }
 
@@ -1903,16 +1924,27 @@
       const agentEl = document.querySelector(`.agent.${currentAgentKey}`);
       const agentEmoji = agentEl?.dataset?.emoji || '🤖';
 
-      // Agent-to-agent messages show with agent emoji instead of Jeremy's crown
-      const avatarEmoji = isUser ? (isAgentMessage ? '🤖' : '👑') : agentEmoji;
-      const avatarClass = isUser ? (isAgentMessage ? 'agent-msg' : 'jeremy') : 'bot';
+      // Determine sender name for display (iMessage group chat style)
+      let senderDisplay = '';
+      if (isUser) {
+        if (isAgentMessage && m.senderName) {
+          // Another agent sent this message - show their name
+          senderDisplay = m.senderName;
+        } else if (!isAgentMessage) {
+          // Jeremy sent this message
+          senderDisplay = 'Jeremy';
+        }
+      } else {
+        // Bot response - show current agent's name
+        senderDisplay = currentAgentKey.charAt(0).toUpperCase() + currentAgentKey.slice(1);
+      }
 
       const el = document.createElement('div');
       el.className = `message-bubble ${isUser ? 'you' : 'them'}`;
       el.dataset.seq = m.seq;
       el.innerHTML = `
-        <div class="bubble-avatar ${avatarClass}">${avatarEmoji}</div>
         <div class="bubble-content">
+          <div class="bubble-sender">${senderDisplay}</div>
           <div class="bubble-text">${isUser ? escapeHtml(m.content || '') : formatMarkdown(m.content || '')}</div>
           <div class="bubble-time">${m.timestampFormatted || ''}</div>
         </div>`;
