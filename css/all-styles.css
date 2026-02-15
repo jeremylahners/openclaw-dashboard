@@ -339,11 +339,11 @@
       .chat-input-container {
         padding: 12px !important;
         flex-shrink: 0; /* Don't let it shrink */
-        display: flex !important;
         gap: 10px;
         align-items: flex-end;
         background: #0f0f1a; /* Ensure it's visible */
         border-top: 1px solid #333 !important;
+        /* Note: display is controlled by JavaScript - only shown on Chat tab */
       }
 
       #chatInput {
@@ -358,12 +358,17 @@
         min-height: 44px; /* iOS recommended tap target */
       }
 
-      /* Ensure tab-pane fills available space */
-      #tab-chat {
+      /* Ensure active tab-pane fills available space on mobile */
+      .tab-pane.active {
         display: flex !important;
         flex-direction: column !important;
         height: 100%;
         overflow: hidden;
+      }
+
+      /* Hide inactive tabs on mobile (same as desktop) */
+      .tab-pane:not(.active) {
+        display: none !important;
       }
 
       /* Chat messages should scroll, input should stay at bottom */
