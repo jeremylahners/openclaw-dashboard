@@ -6,6 +6,14 @@ const net = require('net');
 
 const PORT = 3001;
 const BACKEND_PORT = 8081;
+
+// Prevent process crashes from unhandled errors
+process.on('uncaughtException', (err) => {
+  console.error('[FATAL] Uncaught exception (kept alive):', err.message);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[FATAL] Unhandled rejection (kept alive):', reason);
+});
 const PUBLIC_DIR = __dirname;
 
 const MIME_TYPES = {
@@ -88,9 +96,13 @@ const server = http.createServer((req, res) => {
 // Handle WebSocket upgrade for /ws path - proxy to backend
 server.on('upgrade', (req, socket, head) => {
   if (req.url === '/ws') {
-    // Chat v2: proxy to backend WebSocket server
     console.log('[WS] Proxying chat WebSocket to backend on port', BACKEND_PORT);
+
+    // Set TCP keepalive on the client socket so OS detects dead connections
+    socket.setKeepAlive(true, 30000);
+
     const backendSocket = net.createConnection(BACKEND_PORT, 'localhost', () => {
+      backendSocket.setKeepAlive(true, 30000);
       const headers = Object.entries(req.headers)
         .map(([k, v]) => `${k}: ${v}`)
         .join('\r\n');
@@ -104,12 +116,25 @@ server.on('upgrade', (req, socket, head) => {
       socket.pipe(backendSocket);
       backendSocket.pipe(socket);
     });
+
+    // Connection timeout — if backend is restarting, fail fast so client retries
+    backendSocket.setTimeout(5000, () => {
+      console.error('[WS] Backend connection timeout — backend may be restarting');
+      backendSocket.destroy();
+      socket.end();
+    });
+
     backendSocket.on('error', (e) => {
-      console.error('[WS] Backend chat WS error:', e.message);
+      // Only log non-routine errors (ECONNRESET during backend restart is expected)
+      if (e.code !== 'ECONNRESET') {
+        console.error('[WS] Backend chat WS error:', e.message);
+      }
       socket.end();
     });
     socket.on('error', (e) => {
-      console.error('[WS] Client socket error:', e.message);
+      if (e.code !== 'ECONNRESET') {
+        console.error('[WS] Client socket error:', e.message);
+      }
       backendSocket.end();
     });
   } else {

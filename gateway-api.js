@@ -9,6 +9,15 @@ const chatDb = require('./db.js');
 // Load config
 const config = require('./config.js');
 
+// Prevent process crashes from unhandled errors — log and continue
+process.on('uncaughtException', (err) => {
+  console.error('[FATAL] Uncaught exception (kept alive):', err.message);
+  console.error(err.stack);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[FATAL] Unhandled rejection (kept alive):', reason);
+});
+
 const MEMORY_DIR = path.join(__dirname, '..', 'memory', 'agents');
 const STATUS_FILE = path.join(__dirname, '..', 'memory', 'agent-status.json');
 const INTERACTIONS_FILE = path.join(__dirname, '..', 'memory', 'agent-interactions.json');
@@ -82,6 +91,14 @@ for (const [agent, session] of Object.entries(agentSessions)) {
 let gwSocket = null;
 let gwConnected = false;
 let gwRequestId = 0;
+let gwReconnectDelay = 3000; // starts at 3s, backs off on repeated failures
+let gwReconnectTimer = null;
+let gwPingInterval = null;
+let agentPollInterval = null; // single polling interval — never stacked
+const GW_PING_INTERVAL = 25000; // 25s keepalive ping
+const GW_PONG_TIMEOUT = 10000; // 10s to receive pong before considering dead
+const GW_RECONNECT_MIN = 3000;
+const GW_RECONNECT_MAX = 30000;
 const gwPendingRequests = new Map(); // id -> { resolve, reject }
 const streamingAccumulator = new Map(); // sessionKey -> accumulated text
 
@@ -142,19 +159,75 @@ async function pollAgentSessions() {
   }
 }
 
-// Start polling for agent-to-agent messages
+// Start polling for agent-to-agent messages (guarded — only one interval ever)
 function startAgentMessagePolling() {
+  if (agentPollInterval) {
+    // Already polling — don't stack another interval
+    return;
+  }
   console.log('[GW] Starting agent message polling (every 3 seconds)...');
-  
+
   // Initial sync
   pollAgentSessions();
-  
-  // Poll every 3 seconds
-  setInterval(pollAgentSessions, 3000);
+
+  // Poll every 3 seconds — stored so we can clear on shutdown
+  agentPollInterval = setInterval(pollAgentSessions, 3000);
+}
+
+function gwCleanup() {
+  // Clear keepalive ping
+  if (gwPingInterval) {
+    clearInterval(gwPingInterval);
+    gwPingInterval = null;
+  }
+  gwConnected = false;
+
+  // Reject all pending requests so callers don't hang
+  for (const [id, pending] of gwPendingRequests) {
+    pending.reject(new Error('Gateway connection lost'));
+  }
+  gwPendingRequests.clear();
+}
+
+function gwScheduleReconnect() {
+  if (gwReconnectTimer) return; // already scheduled
+  console.log(`[GW] Reconnecting in ${gwReconnectDelay / 1000}s...`);
+  gwReconnectTimer = setTimeout(() => {
+    gwReconnectTimer = null;
+    gwConnect();
+  }, gwReconnectDelay);
+  // Exponential backoff, capped
+  gwReconnectDelay = Math.min(gwReconnectDelay * 1.5, GW_RECONNECT_MAX);
+}
+
+function gwStartPing() {
+  if (gwPingInterval) clearInterval(gwPingInterval);
+  let pongReceived = true;
+
+  gwPingInterval = setInterval(() => {
+    if (!gwSocket || gwSocket.readyState !== WebSocket.OPEN) return;
+    if (!pongReceived) {
+      console.warn('[GW] Pong timeout — connection appears dead, closing');
+      gwSocket.terminate();
+      return;
+    }
+    pongReceived = false;
+    gwSocket.ping();
+  }, GW_PING_INTERVAL);
+
+  gwSocket.on('pong', () => { pongReceived = true; });
 }
 
 function gwConnect() {
   if (gwSocket && gwSocket.readyState <= WebSocket.CONNECTING) return;
+
+  // Clean up any previous socket fully
+  if (gwSocket) {
+    gwSocket.removeAllListeners();
+    if (gwSocket.readyState === WebSocket.OPEN || gwSocket.readyState === WebSocket.CONNECTING) {
+      gwSocket.terminate();
+    }
+  }
 
   const url = `ws://127.0.0.1:${config.gatewayPort}`;
   console.log('[GW] Connecting to', url);
@@ -164,6 +237,9 @@ function gwConnect() {
 
   gwSocket.on('open', () => {
     console.log('[GW] WebSocket open, sending connect...');
+    // Reset backoff on successful open
+    gwReconnectDelay = GW_RECONNECT_MIN;
+
     const connId = gwNextId();
     gwSendRaw({
       type: 'req', id: connId, method: 'connect',
@@ -179,11 +255,17 @@ function gwConnect() {
       resolve: (payload) => {
         gwConnected = true;
         console.log('[GW] Connected!', payload.server?.version);
-        
-        // Start polling for agent-to-agent messages
+
+        // Start keepalive pings
+        gwStartPing();
+
+        // Start polling (idempotent — won't stack)
         startAgentMessagePolling();
       },
-      reject: (err) => console.error('[GW] Connect failed:', err)
+      reject: (err) => {
+        console.error('[GW] Connect handshake failed:', err);
+        gwSocket.close();
+      }
     });
   });
 
@@ -208,13 +290,13 @@ function gwConnect() {
   });
 
   gwSocket.on('close', () => {
-    gwConnected = false;
-    console.log('[GW] WebSocket closed, reconnecting in 3s...');
-    setTimeout(gwConnect, 3000);
+    gwCleanup();
+    gwScheduleReconnect();
   });
 
   gwSocket.on('error', (e) => {
     console.error('[GW] WebSocket error:', e.message);
+    // 'close' will fire after 'error', so reconnect happens there
   });
 }
 
