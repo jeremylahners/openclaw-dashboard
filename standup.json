@@ -1,0 +1,126 @@
+{
+  "date": "Fri, Feb 13",
+  "time": "3:55 PM",
+  "timestamp": 1771016100000,
+  "updates": [
+    {
+      "agent": "marcus",
+      "emoji": "🔧",
+      "name": "Marcus",
+      "role": "Dev",
+      "items": [
+        { "status": "✅", "text": "Fixed toast notification bug (SW caching)" },
+        { "status": "🔄", "text": "Waiting on chat jumping feedback" }
+      ],
+      "learned": "SW caching gotcha — bump version + never cache HTML + no-cache headers",
+      "blockers": []
+    },
+    {
+      "agent": "eli",
+      "emoji": "🏗️",
+      "name": "Eli",
+      "role": "Architect",
+      "items": [
+        { "status": "🔄", "text": "Standby, available for PWA support or dashboard refactoring" }
+      ],
+      "learned": "Agent-to-agent communication workflow, iOS-only architecture",
+      "blockers": []
+    },
+    {
+      "agent": "sage",
+      "emoji": "🔭",
+      "name": "Sage",
+      "role": "Research",
+      "items": [
+        { "status": "🔄", "text": "Available for research tasks, quiet week" }
+      ],
+      "learned": "Chart support for research visualization",
+      "blockers": []
+    },
+    {
+      "agent": "julie",
+      "emoji": "📣",
+      "name": "Julie",
+      "role": "Marketing",
+      "items": [
+        { "status": "⏳", "text": "Waiting for MHC launch priorities" },
+        { "status": "🔄", "text": "Ready to work on App Store copy/launch messaging" }
+      ],
+      "learned": null,
+      "blockers": []
+    },
+    {
+      "agent": "val",
+      "emoji": "💰",
+      "name": "Val",
+      "role": "Finance",
+      "items": [
+        { "status": "🔄", "text": "No active projects, available" }
+      ],
+      "learned": null,
+      "blockers": []
+    },
+    {
+      "agent": "atlas",
+      "emoji": "🗺️",
+      "name": "Atlas",
+      "role": "Travel",
+      "items": [
+        { "status": "✅", "text": "Updated USER.md with family/travel info" }
+      ],
+      "learned": "Jeremy's travel patterns (Tampa for Alex, Nebraska for parents)",
+      "blockers": []
+    },
+    {
+      "agent": "remy",
+      "emoji": "🍳",
+      "name": "Remy",
+      "role": "Food",
+      "items": [
+        { "status": "🔄", "text": "Seymour v2 Day 3 — monitoring" },
+        { "status": "✅", "text": "Tonight: Creamy Sausage Rigatoni" }
+      ],
+      "learned": null,
+      "blockers": []
+    },
+    {
+      "agent": "harper",
+      "emoji": "🔍",
+      "name": "Harper",
+      "role": "QA",
+      "items": [
+        { "status": "⚠️", "text": "Session timed out" }
+      ],
+      "learned": null,
+      "blockers": []
+    },
+    {
+      "agent": "dash",
+      "emoji": "🎨",
+      "name": "Dash",
+      "role": "Dashboard",
+      "items": [
+        { "status": "⚠️", "text": "Session timed out" }
+      ],
+      "learned": null,
+      "blockers": []
+    },
+    {
+      "agent": "lena",
+      "emoji": "💪",
+      "name": "Lena",
+      "role": "Fitness",
+      "items": [
+        { "status": "⚠️", "text": "Session timed out" }
+      ],
+      "learned": null,
+      "blockers": []
+    }
+  ],
+  "crossTeam": [
+    {
+      "agent": "Marcus + Harper",
+      "text": "PWA gotcha: Service workers cache aggressively — bump cache version + no-cache headers"
+    }
+  ]
+}

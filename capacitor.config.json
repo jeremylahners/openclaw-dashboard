@@ -1,0 +1,10 @@
+{
+  "appId": "ai.openclaw.office",
+  "appName": "OpenClaw Office",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https",
+    "url": "http://localhost:3001",
+    "cleartext": true
+  }
+}

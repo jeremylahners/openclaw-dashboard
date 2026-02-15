@@ -26,3 +26,10 @@ chat.db-shm
 # OS
 .DS_Store
 Thumbs.db
+
+# Capacitor (iOS app)
+www/
+ios/App/Pods
+ios/App/App.xcworkspace
+ios/App/App.xcodeproj/xcuserdata
+ios/App/App.xcodeproj/project.xcworkspace/xcuserdata

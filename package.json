@@ -7,14 +7,49 @@
     "start": "node gateway-api.js",
     "serve": "node serve.js",
     "dev": "node gateway-api.js",
-    "generate-vapid": "node generate-vapid-keys.js"
+    "generate-vapid": "node generate-vapid-keys.js",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "sync": "./sync-web.sh && npx cap sync ios",
+    "ios": "npx cap open ios",
+    "build:ios": "./sync-web.sh && npx cap sync ios && npx cap build ios"
   },
-  "keywords": ["openclaw", "dashboard", "pwa", "push-notifications"],
+  "keywords": [
+    "openclaw",
+    "dashboard",
+    "pwa",
+    "push-notifications"
+  ],
   "author": "OpenClaw",
   "license": "MIT",
   "dependencies": {
+    "@capacitor/cli": "^8.1.0",
+    "@capacitor/core": "^8.1.0",
+    "@capacitor/ios": "^8.1.0",
+    "@capacitor/push-notifications": "^8.0.1",
     "web-push": "^3.6.7",
     "ws": "^8.18.0"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "jest": "^30.2.0"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "collectCoverageFrom": [
+      "gateway-api.js",
+      "service-worker.js"
+    ],
+    "coveragePathIgnorePatterns": [
+      "/node_modules/",
+      "/__tests__/"
+    ],
+    "testMatch": [
+      "**/__tests__/**/*.test.js"
+    ],
+    "setupFilesAfterEnv": [
+      "<rootDir>/__tests__/setup.js"
+    ]
+  }
 }

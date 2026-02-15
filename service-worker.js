@@ -159,9 +159,10 @@ self.addEventListener('push', (event) => {
       }
     ],
     vibrate: [200, 100, 200],
-    requireInteraction: false, // Auto-dismiss after timeout
+    requireInteraction: true, // Keep notification until user interacts (better visibility)
     renotify: true, // Re-notify if same tag
-    silent: false
+    silent: false,
+    persistent: true // Request persistent notification
   };
   
   event.waitUntil(

@@ -1018,23 +1018,33 @@ const server = http.createServer(async (req, res) => {
             });
           }
         } else if (entry.isFile()) {
-          // Only include markdown, text, html files
-          if (entry.name.endsWith('.md') || entry.name.endsWith('.txt') || entry.name.endsWith('.html')) {
+          const ext = path.extname(entry.name).toLowerCase();
+          const textExts = new Set(['.md', '.txt', '.html', '.json', '.csv']);
+          const binaryExts = new Set(['.pdf', '.pptx', '.docx', '.xlsx', '.png', '.jpg', '.jpeg', '.gif', '.svg']);
+
+          if (textExts.has(ext) || binaryExts.has(ext)) {
             const stats = fs.statSync(fullPath);
-            const content = fs.readFileSync(fullPath, 'utf-8');
-            const lines = content.split('\n');
-            const preview = lines.slice(0, 3).join('\n').substring(0, 150);
-            
+            let preview = '';
+
+            if (textExts.has(ext)) {
+              try {
+                const content = fs.readFileSync(fullPath, 'utf-8');
+                const lines = content.split('\n');
+                preview = lines.slice(0, 3).join('\n').substring(0, 150);
+                if (content.length > 150) preview += '...';
+              } catch (e) { /* skip preview on read error */ }
+            }
+
             items.push({
               type: 'file',
               name: entry.name,
               path: relPath,
               size: stats.size,
               modified: stats.mtime.toISOString(),
-              modifiedFormatted: stats.mtime.toLocaleString('en-US', { 
-                month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' 
+              modifiedFormatted: stats.mtime.toLocaleString('en-US', {
+                month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
               }),
-              preview: preview + (content.length > 150 ? '...' : '')
+              preview
             });
           }
         }
@@ -1056,21 +1066,48 @@ const server = http.createServer(async (req, res) => {
   }
   
   else if (req.url.startsWith('/file/') && req.method === 'GET') {
-    const filePath = req.url.replace('/file/', '');
+    const filePath = decodeURIComponent(req.url.replace('/file/', ''));
     const fullPath = path.join(__dirname, '..', filePath);
-    
+
     if (!fullPath.startsWith(path.join(__dirname, '..'))) {
       res.statusCode = 403;
       res.end(JSON.stringify({ error: 'Access denied' }));
       return;
     }
-    
-    try {
-      const content = fs.readFileSync(fullPath, 'utf-8');
-      res.end(JSON.stringify({ ok: true, content, path: filePath }));
-    } catch (e) {
+
+    if (!fs.existsSync(fullPath)) {
       res.statusCode = 404;
       res.end(JSON.stringify({ ok: false, error: 'File not found' }));
+      return;
+    }
+
+    const ext = path.extname(fullPath).toLowerCase();
+    const binaryExts = new Set(['.pdf', '.pptx', '.docx', '.xlsx', '.png', '.jpg', '.jpeg', '.gif', '.svg']);
+
+    if (binaryExts.has(ext)) {
+      // Serve binary files with appropriate content type for download/display
+      const mimeTypes = {
+        '.pdf': 'application/pdf', '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.svg': 'image/svg+xml'
+      };
+      const contentType = mimeTypes[ext] || 'application/octet-stream';
+      const fileBuffer = fs.readFileSync(fullPath);
+      res.writeHead(200, {
+        'Content-Type': contentType,
+        'Content-Length': fileBuffer.length,
+        'Content-Disposition': `inline; filename="${path.basename(fullPath)}"`
+      });
+      res.end(fileBuffer);
+    } else {
+      try {
+        const content = fs.readFileSync(fullPath, 'utf-8');
+        res.end(JSON.stringify({ ok: true, content, path: filePath }));
+      } catch (e) {
+        res.statusCode = 500;
+        res.end(JSON.stringify({ ok: false, error: 'Failed to read file' }));
+      }
     }
   }
   
