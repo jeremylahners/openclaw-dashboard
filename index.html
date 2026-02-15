@@ -920,6 +920,10 @@
 
         // Save preference
         localStorage.setItem('leftPanelTab', targetTab);
+
+        // On mobile, blur chat input to dismiss keyboard when clicking left panel tabs
+        const chatInput = document.getElementById('chatInput');
+        if (chatInput) chatInput.blur();
       });
     });
 
@@ -1535,6 +1539,9 @@
       if (window.innerWidth <= 1200) {
         panelOverlay.classList.remove('active');
       }
+      // Blur chat input to dismiss keyboard on mobile
+      const chatInput = document.getElementById('chatInput');
+      if (chatInput) chatInput.blur();
     });
 
     // Tab click handlers are now attached dynamically by buildTabsForAgent()
@@ -1630,7 +1637,14 @@
 
           // Show chat input only on the Chat tab
           if (chatInputContainer) {
-            chatInputContainer.style.display = (tab.dataset.tab === 'chat') ? 'flex' : 'none';
+            const isChat = (tab.dataset.tab === 'chat');
+            chatInputContainer.style.display = isChat ? 'flex' : 'none';
+            
+            // On mobile, blur the input to dismiss the keyboard when leaving Chat tab
+            if (!isChat) {
+              const chatInput = document.getElementById('chatInput');
+              if (chatInput) chatInput.blur();
+            }
           }
         });
       });
@@ -2719,6 +2733,10 @@
           }
         }
         panelOverlay.classList.remove('active');
+        
+        // Blur chat input to dismiss keyboard on mobile
+        const chatInput = document.getElementById('chatInput');
+        if (chatInput) chatInput.blur();
       });
     }
 
