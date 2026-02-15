@@ -95,17 +95,6 @@
       "blockers": []
     },
     {
-      "agent": "dash",
-      "emoji": "🎨",
-      "name": "Dash",
-      "role": "Dashboard",
-      "items": [
-        { "status": "⚠️", "text": "Session timed out" }
-      ],
-      "learned": null,
-      "blockers": []
-    },
-    {
       "agent": "lena",
       "emoji": "💪",
       "name": "Lena",
