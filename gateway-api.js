@@ -110,27 +110,50 @@ async function pollAgentSessions() {
       for (const msg of history.messages) {
         const msgTimestamp = msg.timestamp || 0;
         if (msgTimestamp <= lastKnownTimestamp) continue;
-        
+
         // Found a new message!
         if (msg.role === 'user') {
           const text = extractMessageText(msg);
           if (!text || NOISE_REPLIES.test(text.trim()) || isSystemContextMessage(text)) continue;
 
-          // Skip if this message already exists in SQLite (sent by dashboard)
-          // Gateway may normalize whitespace, so compare with collapsed spaces
-          const existingMessages = chatDb.getMessages(agentKey);
-          const normalizedText = text.replace(/\s+/g, ' ').trim();
-          const alreadyStored = existingMessages.some(m =>
-            m.role === 'user' &&
-            m.content.replace(/\s+/g, ' ').trim() === normalizedText &&
-            Math.abs(m.timestamp - msgTimestamp) < 60000
-          );
-          if (alreadyStored) continue;
+          // Check provenance for inter-session (agent-to-agent) messages
+          const provenance = msg.provenance || msg.inputProvenance || null;
+          const isInterSession = provenance?.kind === 'inter_session';
 
-          // Store in SQLite with metadata indicating it's an agent-to-agent message
+          // If no provenance or not inter-session, this is likely Jeremy's message
+          // Skip if already stored from dashboard send
+          if (!isInterSession) {
+            const existingMessages = chatDb.getMessages(agentKey);
+            const normalizedText = text.replace(/\s+/g, ' ').trim();
+            const alreadyStored = existingMessages.some(m =>
+              m.role === 'user' &&
+              m.content.replace(/\s+/g, ' ').trim() === normalizedText &&
+              Math.abs(m.timestamp - msgTimestamp) < 60000
+            );
+            if (alreadyStored) continue;
+          }
+
+          // Extract sender from provenance sourceSessionKey or fall back to text patterns
+          let senderName = null;
+          if (provenance?.sourceSessionKey) {
+            const match = provenance.sourceSessionKey.match(/^agent:(\w+):/);
+            if (match) senderName = match[1].charAt(0).toUpperCase() + match[1].slice(1);
+          }
+          if (!senderName) {
+            senderName = extractSenderFromText(text, wsConfig.agentKeys, agentKey);
+          }
+
+          if (provenance) {
+            console.log(`[GW] Provenance for ${agentKey}: kind=${provenance.kind}, source=${provenance.sourceSessionKey || 'none'}`);
+          }
+
+          // Store in SQLite with metadata
           const idempotencyKey = `poll-user-${agentKey}-${msgTimestamp}`;
-          const senderName = extractSenderFromText(text, wsConfig.agentKeys, agentKey);
-          const metadata = { source: 'agent', senderName: senderName || null };
+          const metadata = {
+            source: isInterSession ? 'agent' : 'user',
+            senderName: senderName || null,
+            sourceSessionKey: provenance?.sourceSessionKey || null
+          };
           const result = chatDb.addMessage(agentKey, 'user', text, msgTimestamp, idempotencyKey, metadata);
 
           if (!result.duplicate) {
@@ -395,11 +418,32 @@ function handleGatewayChatEvent(payload) {
       return;
     }
 
+    // Extract provenance for sender attribution
+    const provenance = payload.message.provenance || payload.message.inputProvenance || null;
+    const isInterSession = provenance?.kind === 'inter_session';
+
+    // Extract sender from provenance or fall back to text patterns
+    let senderName = null;
+    if (provenance?.sourceSessionKey) {
+      const match = provenance.sourceSessionKey.match(/^agent:(\w+):/);
+      if (match) senderName = match[1].charAt(0).toUpperCase() + match[1].slice(1);
+    }
+    if (!senderName) {
+      senderName = extractSenderFromText(text, wsConfig.agentKeys, agent);
+    }
+
+    if (provenance) {
+      console.log(`[GW] Provenance for ${agent}: kind=${provenance.kind}, source=${provenance.sourceSessionKey || 'none'}`);
+    }
+
     // Store incoming message in SQLite with agent-to-agent metadata
     const now = Date.now();
     const idempotencyKey = `gw-user-${agent}-${now}-${Math.random().toString(36).slice(2)}`;
-    const senderName = extractSenderFromText(text, wsConfig.agentKeys, agent);
-    const metadata = { source: 'agent', senderName: senderName || null };
+    const metadata = {
+      source: isInterSession ? 'agent' : 'agent',  // Both paths here are agent-originated
+      senderName: senderName || null,
+      sourceSessionKey: provenance?.sourceSessionKey || null
+    };
     const result = chatDb.addMessage(agent, 'user', text, now, idempotencyKey, metadata);
 
     if (!result.duplicate) {
@@ -1659,16 +1703,19 @@ function formatMessageForClient(row) {
   const metadata = row.metadata ? (typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata) : {};
   const isAgentMessage = metadata.source === 'agent';
   
-  // Extract sender name: check metadata.senderName first, then try sourceSession
+  // Extract sender name: sourceSessionKey (from provenance), then senderName, then legacy sourceSession
   let senderName = null;
   if (isAgentMessage) {
-    if (metadata.senderName) {
+    if (metadata.sourceSessionKey) {
+      const match = metadata.sourceSessionKey.match(/^agent:(\w+):/);
+      if (match) senderName = match[1].charAt(0).toUpperCase() + match[1].slice(1);
+    }
+    if (!senderName && metadata.senderName) {
       senderName = metadata.senderName;
-    } else if (metadata.sourceSession) {
+    }
+    if (!senderName && metadata.sourceSession) {
       const match = metadata.sourceSession.match(/^agent:(\w+):/);
-      if (match) {
-        senderName = match[1].charAt(0).toUpperCase() + match[1].slice(1);
-      }
+      if (match) senderName = match[1].charAt(0).toUpperCase() + match[1].slice(1);
     }
   }
   
