@@ -55,6 +55,22 @@ const streamingAccumulator = new Map(); // sessionKey -> accumulated text
 
 function gwNextId() { return `req-${++gwRequestId}`; }
 
+// Subscribe to all agent chat sessions to receive incoming messages
+async function subscribeToAgentChats() {
+  console.log('[GW] Subscribing to agent chat sessions...');
+  
+  for (const [agentKey, sessionKey] of Object.entries(agentSessions)) {
+    try {
+      await gwRequest('chat.subscribe', { sessionKey });
+      console.log(`[GW] ✅ Subscribed to chat for ${agentKey} (${sessionKey})`);
+    } catch (err) {
+      console.error(`[GW] ❌ Failed to subscribe to ${agentKey}:`, err.message);
+    }
+  }
+  
+  console.log('[GW] Chat subscriptions complete');
+}
+
 function gwConnect() {
   if (gwSocket && gwSocket.readyState <= WebSocket.CONNECTING) return;
 
@@ -81,6 +97,9 @@ function gwConnect() {
       resolve: (payload) => {
         gwConnected = true;
         console.log('[GW] Connected!', payload.server?.version);
+        
+        // Subscribe to all agent chat sessions to receive incoming messages
+        subscribeToAgentChats();
       },
       reject: (err) => console.error('[GW] Connect failed:', err)
     });
@@ -164,6 +183,36 @@ function handleGatewayChatEvent(payload) {
   const sessionKey = payload.sessionKey;
   const agent = sessionToAgent[sessionKey];
   if (!agent) return; // unknown session
+
+  // Handle incoming messages (role="user") from chat.subscribe events
+  // This captures agent-to-agent messages sent via sessions_send
+  if (payload.state === 'final' && payload.message && payload.message.role === 'user') {
+    const text = extractMessageText(payload.message);
+    
+    // Filter noise replies and empty messages
+    if (!text || NOISE_REPLIES.test(text.trim())) {
+      return;
+    }
+
+    // Store incoming message in SQLite
+    const now = Date.now();
+    const idempotencyKey = `gw-user-${agent}-${now}-${Math.random().toString(36).slice(2)}`;
+    const result = chatDb.addMessage(agent, 'user', text, now, idempotencyKey);
+
+    if (!result.duplicate) {
+      console.log(`[GW] 📨 Incoming message for ${agent}: "${text.substring(0, 50)}..."`);
+      
+      const clientMsg = formatMessageForClient({
+        seq: result.seq, agent, role: 'user', content: text, timestamp: now
+      });
+
+      // Broadcast to connected clients
+      broadcastMessage(agent, clientMsg);
+    }
+    
+    // Don't process further - this is just an incoming message
+    return;
+  }
 
   if (payload.state === 'delta' && payload.message) {
     const text = extractMessageText(payload.message);
