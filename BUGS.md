@@ -158,6 +158,47 @@ Likely related to:
 Ready for Jeremy to test after refresh
 
 **Commit:**
-- Pending commit with db.js changes
+- `24c7ba3` - Content-based deduplication in db.js
 
 ---
+
+### Bug #4: Messages Showing System Metadata
+**Reported**: 2026-02-14 22:48 EST  
+**Reporter**: Jeremy  
+**Severity**: Medium  
+**Status**: Open
+
+**Description:**
+Messages in the chat UI are displaying raw system metadata that should be stripped for user-facing display.
+
+**Example:**
+```
+System: [2026-02-14 22:32:21 EST] Config cleaned - now using only gpt-5.2-codex. Ready for testing.
+```
+
+**Expected Display:**
+```
+Config cleaned - now using only gpt-5.2-codex. Ready for testing.
+```
+
+**Issues:**
+1. "System:" prefix should not be shown
+2. Timestamp in brackets `[2026-02-14 22:32:21 EST]` is redundant (message already has timestamp)
+3. Raw formatting should be cleaned before rendering
+
+**Root Cause:**
+Likely in message rendering pipeline:
+- Messages from certain sources (system events, cron jobs, etc.) have metadata prefixes
+- Frontend is displaying raw message content without stripping metadata
+- Need to sanitize/format messages before display
+
+**Investigation Needed:**
+1. Check `formatMarkdown()` function in `index.html`
+2. Review message rendering in `createMessageEl()` and `appendMessageEl()`
+3. Identify where "System:" prefix is added
+4. Add message content sanitization before display
+
+**Assigned To:** Dash (frontend message rendering) + Codex (code review)
+
+**Priority:** Medium - affects message readability
+
