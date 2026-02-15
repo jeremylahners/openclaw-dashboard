@@ -55,20 +55,69 @@ const streamingAccumulator = new Map(); // sessionKey -> accumulated text
 
 function gwNextId() { return `req-${++gwRequestId}`; }
 
-// Subscribe to all agent chat sessions to receive incoming messages
-async function subscribeToAgentChats() {
-  console.log('[GW] Subscribing to agent chat sessions...');
-  
+// Track last known message timestamps per agent to detect new messages
+const lastMessageTimestamps = new Map(); // agentKey -> timestamp
+
+// Poll sessions.history to detect agent-to-agent messages
+async function pollAgentSessions() {
   for (const [agentKey, sessionKey] of Object.entries(agentSessions)) {
     try {
-      await gwRequest('chat.subscribe', { sessionKey });
-      console.log(`[GW] ✅ Subscribed to chat for ${agentKey} (${sessionKey})`);
+      const history = await gwRequest('chat.history', {
+        sessionKey,
+        limit: 10
+      });
+      
+      if (!history || !history.messages) continue;
+      
+      const lastKnownTimestamp = lastMessageTimestamps.get(agentKey) || 0;
+      let newLatestTimestamp = lastKnownTimestamp;
+      
+      // Process messages newer than last known
+      for (const msg of history.messages) {
+        const msgTimestamp = msg.timestamp || 0;
+        if (msgTimestamp <= lastKnownTimestamp) continue;
+        
+        // Found a new message!
+        if (msg.role === 'user') {
+          const text = extractMessageText(msg);
+          if (!text || NOISE_REPLIES.test(text.trim())) continue;
+          
+          // Store in SQLite
+          const idempotencyKey = `poll-user-${agentKey}-${msgTimestamp}`;
+          const result = chatDb.addMessage(agentKey, 'user', text, msgTimestamp, idempotencyKey);
+          
+          if (!result.duplicate) {
+            console.log(`[GW] 📨 New incoming message for ${agentKey}: "${text.substring(0, 50)}..."`);
+            
+            const clientMsg = formatMessageForClient({
+              seq: result.seq, agent: agentKey, role: 'user', content: text, timestamp: msgTimestamp
+            });
+            
+            broadcastMessage(agentKey, clientMsg);
+          }
+        }
+        
+        newLatestTimestamp = Math.max(newLatestTimestamp, msgTimestamp);
+      }
+      
+      if (newLatestTimestamp > lastKnownTimestamp) {
+        lastMessageTimestamps.set(agentKey, newLatestTimestamp);
+      }
     } catch (err) {
-      console.error(`[GW] ❌ Failed to subscribe to ${agentKey}:`, err.message);
+      console.error(`[GW] Failed to poll ${agentKey}:`, err.message);
     }
   }
+}
+
+// Start polling for agent-to-agent messages
+function startAgentMessagePolling() {
+  console.log('[GW] Starting agent message polling (every 3 seconds)...');
   
-  console.log('[GW] Chat subscriptions complete');
+  // Initial sync
+  pollAgentSessions();
+  
+  // Poll every 3 seconds
+  setInterval(pollAgentSessions, 3000);
 }
 
 function gwConnect() {
@@ -89,7 +138,7 @@ function gwConnect() {
         minProtocol: 3, maxProtocol: 3,
         client: { id: 'webchat-ui', version: '1.0.0', platform: 'web', mode: 'ui' },
         role: 'operator',
-        scopes: ['operator.read', 'operator.write'],
+        scopes: ['operator.read', 'operator.write', 'operator.admin'],
         auth: { token: GATEWAY_TOKEN }
       }
     });
@@ -98,8 +147,8 @@ function gwConnect() {
         gwConnected = true;
         console.log('[GW] Connected!', payload.server?.version);
         
-        // Subscribe to all agent chat sessions to receive incoming messages
-        subscribeToAgentChats();
+        // Start polling for agent-to-agent messages
+        startAgentMessagePolling();
       },
       reject: (err) => console.error('[GW] Connect failed:', err)
     });
