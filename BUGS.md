@@ -2,11 +2,11 @@
 
 ## Critical Issues
 
-### Bug #1: Agent-to-Agent Messages Not Visible in Chat UI
+### Bug #1: Agent-to-Agent Messages Not Visible in Chat UI ✅ FIXED
 **Reported**: 2026-02-14 20:23 EST  
 **Reporter**: Jeremy  
 **Severity**: High  
-**Status**: Open
+**Status**: ✅ RESOLVED (2026-02-14 20:50 EST)
 
 **Description:**
 When agents communicate via `sessions_send()`, the messages don't appear in the Office dashboard chat interface. This makes agent-to-agent communication invisible to users.
@@ -36,21 +36,61 @@ Use `sessions_history()` to manually check agent communication
 
 **Priority:** High - affects core agent collaboration workflow
 
-**Investigation Status (Marcus, 2026-02-14 20:30 EST):**
-- ✅ Root cause identified: Incoming agent messages not stored in SQLite
-- ✅ Current flow only handles agent responses (`role: 'assistant'`)
-- ✅ Three solution options documented in `AGENT_TO_AGENT_FIX.md`
-- ⏳ Waiting on Harper: Does Gateway emit incoming message events?
-- ⏳ Need to choose solution based on Gateway capabilities
+**Solution Implemented (Marcus, 2026-02-14 21:45 EST):**
+- ✅ Polling solution: Poll `chat.history` every 3 seconds for all agents
+- ✅ Detect new incoming messages (`role='user'`) by timestamp tracking
+- ✅ Store in SQLite chat.db and broadcast to dashboard clients
+- ✅ No Gateway modifications needed
+- ✅ Tested and confirmed working by Jeremy
 
-**Next Steps:**
-1. Confirm Gateway event capabilities with Harper
-2. Choose solution (Option A or B)
-3. Implement backend storage for agent-to-agent messages
-4. Update frontend to display with sender attribution
+**Testing Results (Harper + Jeremy, 2026-02-14 20:50 EST):**
+- ✅ Harper sent test messages via `sessions_send`
+- ✅ Messages detected within 3 seconds
+- ✅ Messages stored in database correctly
+- ✅ Messages appear in Office dashboard UI
+- ✅ Two-way visibility confirmed (sender and receiver both see messages)
+
+**Performance:**
+- Polling overhead: 4 req/sec to Gateway (12 agents × 3s interval)
+- Message latency: < 3 seconds
+- Minimal impact on Gateway
+
+**Commits:**
+- `256fcf2` - Bug analysis and documentation
+- `39ef252` - Gateway capabilities investigation
+- `d844ab5` - Working polling solution
+- `c115ff6` - Implementation status documentation
 
 ---
 
 ## Other Known Issues
 
-*(Add additional bugs below as discovered)*
+### Bug #2: Streaming Message Cleanup Issue
+**Reported**: 2026-02-14 20:50 EST  
+**Reporter**: Jeremy  
+**Severity**: Low  
+**Status**: Open
+
+**Description:**
+Partial streaming messages sometimes remain visible in chat after the final message has been committed. The streaming message element doesn't get properly removed/replaced.
+
+**Example:**
+In Marcus's chat, this partial message is stuck:
+> "Perfect! Found it. The Gateway does support chat event subscriptions via chat.subscribe. Let me update my analysis"
+
+The final committed message should have replaced it, but the streaming element remained.
+
+**Root Cause:**
+Likely an issue with `clearStreamingEl()` logic in the frontend or streaming state cleanup when final messages arrive.
+
+**Investigation Needed:**
+1. Check `clearStreamingEl()` function in `index.html`
+2. Verify streaming elements are removed when `state='final'` event arrives
+3. Check streaming state management per agent
+4. Ensure DOM cleanup happens before final message render
+
+**Assigned To:** Dash (frontend streaming) + Marcus (if backend involved)
+
+**Priority:** Low - cosmetic issue, doesn't affect functionality
+
+---
