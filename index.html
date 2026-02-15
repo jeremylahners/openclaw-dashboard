@@ -20,6 +20,7 @@
   <link rel="apple-touch-icon" href="/icons/icon-192.png">
   
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.8/dist/purify.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/apexcharts@3.45.1/dist/apexcharts.min.js"></script>
   <link rel="stylesheet" href="css/all-styles.css?v=9">
   <link rel="stylesheet" href="css/toast.css?v=3">
@@ -653,6 +654,26 @@
       return div.innerHTML;
     }
 
+    // Safe markdown rendering with DOMPurify sanitization
+    function safeMarkdown(text) {
+      if (!text) return '';
+      if (typeof marked === 'undefined') return escapeHtml(text);
+      
+      marked.setOptions({ breaks: true, gfm: true, headerIds: true, mangle: false });
+      const html = marked.parse(text);
+      
+      // Sanitize with DOMPurify if available, otherwise escape
+      if (typeof DOMPurify !== 'undefined') {
+        return DOMPurify.sanitize(html, { 
+          ADD_ATTR: ['target'],
+          ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'code', 'pre', 'ul', 'ol', 'li', 
+                        'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'a', 'blockquote', 
+                        'table', 'thead', 'tbody', 'tr', 'th', 'td', 'hr', 'span', 'div']
+        });
+      }
+      return escapeHtml(text); // Fallback to plain text if no DOMPurify
+    }
+
     // API to add action items (called by agents or from console)
     window.addActionItemFromAgent = async function(text, agentName) {
       try {
@@ -1142,14 +1163,8 @@
           <iframe src="${blobUrl}" style="flex: 1; border: none; background: #fff; border-radius: 8px;"></iframe>
         `;
       } else if (isMarkdown && typeof marked !== 'undefined') {
-        // Configure marked for better rendering
-        marked.setOptions({
-          breaks: true,
-          gfm: true,
-          headerIds: true,
-          mangle: false
-        });
-        renderedContent = marked.parse(content);
+        // Use safe markdown rendering with DOMPurify sanitization
+        renderedContent = safeMarkdown(content);
         viewerClass = 'markdown-view';
         viewer.innerHTML = `
           <div class="file-viewer-header">
@@ -1353,7 +1368,6 @@
     }
 
     // Poll interactions
-    const originalPollInteractions = pollInteractions;
     pollInteractions = async function() {
       try {
         const response = await fetch(`${API_BASE}/interactions/active`);
@@ -1654,9 +1668,9 @@
             <p>No data yet.</p>
             <p style="font-size: 0.85rem;">Ask ${agentName} to update this tab.</p>
           </div>`;
-        } else if (data.format === 'markdown' && typeof marked !== 'undefined') {
-          marked.setOptions({ breaks: true, gfm: true });
-          container.innerHTML = `<div class="markdown-view" style="max-width: 800px;">${marked.parse(data.content)}</div>`;
+        } else if (data.format === 'markdown') {
+          // Use safe markdown rendering with DOMPurify sanitization
+          container.innerHTML = `<div class="markdown-view" style="max-width: 800px;">${safeMarkdown(data.content)}</div>`;
         } else if (data.format === 'json') {
           container.innerHTML = renderAgentDataTable(data.data);
         } else {
@@ -1796,16 +1810,16 @@
       }
     }
 
-    setInterval(reconcileAllAgents, 30000);
+    setInterval(reconcileAllAgents, 3000); // Every 3 seconds (was 30s)
 
-    // Refresh current agent's chat every 60 seconds to catch any missed messages
+    // Refresh current agent's chat every 3 seconds to catch any missed messages
     setInterval(() => {
       if (currentAgentKey && chatWs && chatWs.readyState === 1) {
         const lastSeq = getLastSeq(currentAgentKey);
         console.log('[Chat] Periodic refresh for', currentAgentKey, 'lastSeq:', lastSeq);
         chatWs.send(JSON.stringify({ type: 'subscribe', agent: currentAgentKey, lastSeq }));
       }
-    }, 60000); // Every 60 seconds
+    }, 3000); // Every 3 seconds (was 60s)
 
     // Reconcile immediately when tab becomes visible (e.g., switching back from iPad app)
     document.addEventListener('visibilitychange', () => {
@@ -1930,7 +1944,10 @@
         if (isAgentMessage && m.senderName) {
           // Another agent sent this message - show their name
           senderDisplay = m.senderName;
-        } else if (!isAgentMessage) {
+        } else if (isAgentMessage) {
+          // Agent message but malformed sourceSession - fallback
+          senderDisplay = 'Agent';
+        } else {
           // Jeremy sent this message
           senderDisplay = 'Jeremy';
         }
@@ -1944,7 +1961,7 @@
       el.dataset.seq = m.seq;
       el.innerHTML = `
         <div class="bubble-content">
-          <div class="bubble-sender">${senderDisplay}</div>
+          <div class="bubble-sender">${escapeHtml(senderDisplay)}</div>
           <div class="bubble-text">${isUser ? escapeHtml(m.content || '') : formatMarkdown(m.content || '')}</div>
           <div class="bubble-time">${m.timestampFormatted || ''}</div>
         </div>`;
@@ -2251,6 +2268,16 @@
           mangle: false
         });
         html = marked.parse(processedText);
+        
+        // Sanitize with DOMPurify to prevent XSS from agent responses
+        if (typeof DOMPurify !== 'undefined') {
+          html = DOMPurify.sanitize(html, { 
+            ADD_ATTR: ['target'],
+            ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'code', 'pre', 'ul', 'ol', 'li', 
+                          'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'a', 'blockquote', 
+                          'table', 'thead', 'tbody', 'tr', 'th', 'td', 'hr', 'span', 'div', 'del']
+          });
+        }
       }
 
       // Replace placeholders with actual chart HTML
@@ -2268,11 +2295,7 @@
       return html;
     }
 
-    function escapeHtml(text) {
-      const div = document.createElement('div');
-      div.textContent = text;
-      return div.innerHTML;
-    }
+    // Note: escapeHtml defined earlier in file (line ~651)
 
     function getOrCreateStreamingEl(agentKey) {
       let ss = streamingState.get(agentKey);

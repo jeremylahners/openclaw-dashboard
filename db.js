@@ -44,6 +44,10 @@ const checkIdempotency = db.prepare(
   'SELECT seq FROM messages WHERE idempotency_key = ?'
 );
 
+const checkContentDuplicate = db.prepare(
+  'SELECT seq FROM messages WHERE agent = ? AND role = ? AND content = ? AND ABS(timestamp - ?) < 10000'
+);
+
 function addMessage(agent, role, content, timestamp, idempotencyKey = null, metadata = null) {
   // If idempotency key provided, check for duplicate first
   if (idempotencyKey) {
@@ -51,6 +55,14 @@ function addMessage(agent, role, content, timestamp, idempotencyKey = null, meta
     if (existing) {
       return { seq: existing.seq, duplicate: true };
     }
+  }
+
+  // Additional check: prevent duplicate by content + timestamp proximity
+  // (catches polling re-detection of web UI sent messages)
+  const contentDupe = checkContentDuplicate.get(agent, role, content, timestamp);
+  if (contentDupe) {
+    console.log(`[DB] Content duplicate detected for ${agent}: "${content.substring(0, 30)}..."`);
+    return { seq: contentDupe.seq, duplicate: true };
   }
 
   try {

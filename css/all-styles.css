@@ -742,6 +742,10 @@
       margin-bottom: 4px;   /* More spacing */
     }
 
+    .bubble-sender:empty {
+      display: none;
+    }
+
     .message-bubble.you .bubble-sender {
       text-align: right;
       color: #60a5fa;  /* Brighter blue */

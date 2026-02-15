@@ -37,6 +37,38 @@ const agentSessions = {
   nova: "agent:nova:webchat:user"
 };
 
+// Simple in-memory rate limiter
+const rateLimits = new Map();
+const RATE_LIMIT_WINDOW = 60000; // 1 minute
+const RATE_LIMIT_MAX = 100; // max requests per window per IP
+
+function checkRateLimit(ip) {
+  const now = Date.now();
+  const record = rateLimits.get(ip);
+  
+  if (!record || (now - record.windowStart) > RATE_LIMIT_WINDOW) {
+    rateLimits.set(ip, { windowStart: now, count: 1 });
+    return true;
+  }
+  
+  if (record.count >= RATE_LIMIT_MAX) {
+    return false;
+  }
+  
+  record.count++;
+  return true;
+}
+
+// Clean up old rate limit entries every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, record] of rateLimits) {
+    if ((now - record.windowStart) > RATE_LIMIT_WINDOW * 2) {
+      rateLimits.delete(ip);
+    }
+  }
+}, 300000);
+
 // Reverse lookup: session key -> agent name
 const sessionToAgent = {};
 for (const [agent, session] of Object.entries(agentSessions)) {
@@ -668,6 +700,14 @@ const server = http.createServer(async (req, res) => {
     return;
   }
   
+  // Rate limiting
+  const clientIp = req.socket.remoteAddress || 'unknown';
+  if (!checkRateLimit(clientIp)) {
+    res.statusCode = 429;
+    res.end(JSON.stringify({ error: 'Too many requests - try again later' }));
+    return;
+  }
+  
   // Status endpoints - read-only, read from agent memory files
   if (req.url === '/status') {
     const statuses = loadStatus();
@@ -771,6 +811,13 @@ const server = http.createServer(async (req, res) => {
         if (!content || !role) {
           res.statusCode = 400;
           res.end(JSON.stringify({ ok: false, error: 'Missing content or role' }));
+          return;
+        }
+        // Validate role to prevent injection
+        const validRoles = ['user', 'assistant', 'system'];
+        if (!validRoles.includes(role)) {
+          res.statusCode = 400;
+          res.end(JSON.stringify({ ok: false, error: 'Invalid role - must be user, assistant, or system' }));
           return;
         }
         if (!agentSessions[agentKey]) {
@@ -1161,11 +1208,14 @@ const server = http.createServer(async (req, res) => {
   
   else if (req.url.startsWith('/file/') && req.method === 'GET') {
     const filePath = decodeURIComponent(req.url.replace('/file/', ''));
-    const fullPath = path.join(__dirname, '..', filePath);
+    const baseDir = path.resolve(__dirname, '..');
+    const fullPath = path.resolve(baseDir, filePath);
 
-    if (!fullPath.startsWith(path.join(__dirname, '..'))) {
+    // Secure path traversal check using path.relative
+    const relative = path.relative(baseDir, fullPath);
+    if (relative.startsWith('..') || path.isAbsolute(relative)) {
       res.statusCode = 403;
-      res.end(JSON.stringify({ error: 'Access denied' }));
+      res.end(JSON.stringify({ error: 'Access denied - path traversal detected' }));
       return;
     }
 
@@ -1301,9 +1351,29 @@ const wss = new WebSocketServer({ server });
 // Track connected clients and their subscriptions
 const wsClients = new Set();
 
+// WebSocket heartbeat to clean up stale connections
+const WS_HEARTBEAT_INTERVAL = 30000; // 30 seconds
+setInterval(() => {
+  for (const client of wsClients) {
+    if (client.isAlive === false) {
+      console.log('[WS-Chat] Terminating stale client');
+      wsClients.delete(client);
+      client.ws.terminate();
+      continue;
+    }
+    client.isAlive = false;
+    if (client.ws.readyState === 1) {
+      client.ws.ping();
+    }
+  }
+}, WS_HEARTBEAT_INTERVAL);
+
 wss.on('connection', (ws) => {
-  const client = { ws, subscribedAgent: null };
+  const client = { ws, subscribedAgent: null, isAlive: true };
   wsClients.add(client);
+  
+  // Handle pong responses
+  ws.on('pong', () => { client.isAlive = true; });
   console.log('[WS-Chat] Client connected, total:', wsClients.size);
 
   ws.on('message', (data) => {

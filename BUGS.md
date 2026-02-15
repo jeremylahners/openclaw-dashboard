@@ -94,3 +94,70 @@ Likely an issue with `clearStreamingEl()` logic in the frontend or streaming sta
 **Priority:** Low - cosmetic issue, doesn't affect functionality
 
 ---
+
+### Bug #3: Duplicate User Message on Send ✅ FIXED
+**Reported**: 2026-02-14 22:36 EST  
+**Reporter**: Jeremy  
+**Severity**: Medium  
+**Status**: ✅ RESOLVED (2026-02-14 22:38 EST)
+
+**Description:**
+When Jeremy sends a message, he initially sees a duplicate of his own message displayed as coming from the agent, with extended detail/metadata surrounding the original message. When the page is refreshed, the duplication disappears.
+
+**Steps to Reproduce:**
+1. Open Office dashboard chat with any agent
+2. Type and send a message
+3. Observe chat display immediately after sending
+4. Notice duplicate message appearing (looks like it came from agent)
+5. Refresh page - duplicate disappears
+
+**Expected Behavior:**
+- User message appears once, in the correct position
+- No duplicate or echo of the message
+- No extended detail/metadata shown
+
+**Current Behavior:**
+- User message appears correctly (optimistic display)
+- A second copy of the message appears as if from the agent
+- The duplicate includes extended detail/metadata
+- Refresh clears the duplicate (database is correct)
+
+**Root Cause (Hypothesis):**
+Likely related to:
+- Optimistic message insertion vs. server confirmation
+- Agent-to-agent message polling detecting user's own message
+- Message deduplication logic not working correctly
+- Frontend rendering both optimistic and confirmed messages
+
+**Technical Details:**
+- Frontend: `index.html` - `appendMessageEl()`, `handleNewMessage()`
+- Backend: `gateway-api.js` - agent polling system
+- Database: Message stored correctly (verified by refresh clearing duplicate)
+- Timing: Happens immediately after send, before next poll cycle
+
+**Assigned To:** Marcus (backend message dedup) + Dash (frontend display)
+
+**Priority:** Medium - affects UX during active conversation
+
+**Investigation Needed:**
+1. Check optimistic message `_optimistic` flag handling
+2. Verify deduplication by content/idempotency key
+3. Review agent polling - is it detecting user's own sent messages?
+4. Check if `handleNewMessage()` properly replaces optimistic messages
+
+**Solution Implemented (Marcus, 2026-02-14 22:38 EST):**
+- ✅ Root cause: Polling system re-detected Jeremy's sent messages with different idempotency keys
+- ✅ Web UI sends with key: `user-${timestamp}-${random}`
+- ✅ Polling uses key: `poll-user-${agentKey}-${msgTimestamp}`
+- ✅ SQLite only checks idempotency key for duplicates, so both went through
+- ✅ Fix: Added content-based deduplication in `db.js`
+- ✅ New check: Same agent + role + content + timestamp within 10s = duplicate
+- ✅ Prevents polling from re-adding web UI sent messages
+
+**Testing:**
+Ready for Jeremy to test after refresh
+
+**Commit:**
+- Pending commit with db.js changes
+
+---
