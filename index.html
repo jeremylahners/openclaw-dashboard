@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>The Office - Team HQ</title>
+  <title>Loading...</title>
   
   <!-- PWA Manifest -->
   <link rel="manifest" href="/manifest.json">
@@ -63,84 +63,8 @@
         <div class="zone-label" style="text-align: center;">Chief of Staff</div>
       </div>
 
-      <!-- Agents -->
-      <div class="agent marcus" data-name="Marcus Chen" data-role="Dev Manager" data-task="Reviewing PR #189" data-quote="Technical debt is just procrastination with a fancier name." data-emoji="🔧">
-        <div class="avatar">🔧<div class="status-dot status-working"></div><div class="unread-badge">💬</div></div>
-        <div class="agent-name">Marcus</div>
-        <div class="agent-role">Dev Manager</div>
-        <div class="agent-task">Reviewing PR</div>
-      </div>
-
-      <div class="agent harper" data-name="Harper Reyes" data-role="QA Manager" data-task="Testing Build 193" data-quote="If you didn't test it, you don't know if it works." data-emoji="🔍">
-        <div class="avatar">🔍<div class="status-dot status-working"></div><div class="unread-badge">💬</div></div>
-        <div class="agent-name">Harper</div>
-        <div class="agent-role">QA Manager</div>
-        <div class="agent-task">Testing build</div>
-      </div>
-
-      <div class="agent eli" data-name="Eli Vasquez" data-role="Chief Architect" data-task="Reviewing DiveStreams patterns" data-quote="The goal isn't elegant code. It's code that survives next quarter." data-emoji="🏗️">
-        <div class="avatar">🏗️<div class="status-dot status-thinking"></div><div class="unread-badge">💬</div></div>
-        <div class="agent-name">Eli</div>
-        <div class="agent-role">Chief Architect</div>
-        <div class="agent-task">Architecture review</div>
-      </div>
-
-      <div class="agent sage" data-name="Sage Okonkwo" data-role="Researcher" data-task="Competitor analysis" data-quote="The best feature ideas are already in your support tickets." data-emoji="🔭">
-        <div class="avatar">🔭<div class="status-dot status-idle"></div><div class="unread-badge">💬</div></div>
-        <div class="agent-name">Sage</div>
-        <div class="agent-role">Researcher</div>
-        <div class="agent-task">Research</div>
-      </div>
-
-      <div class="agent julie" data-name="Julie Marquez" data-role="Marketing Manager" data-task="MHC launch copy" data-quote="People don't buy features. They buy better versions of themselves." data-emoji="📣">
-        <div class="avatar">📣<div class="status-dot status-working"></div><div class="unread-badge">💬</div></div>
-        <div class="agent-name">Julie</div>
-        <div class="agent-role">Marketing</div>
-        <div class="agent-task">Launch copy</div>
-      </div>
-
-
-      <div class="agent remy" data-name="Remy Delacroix" data-role="Chef" data-task="Planning tomorrow's dinner" data-quote="You don't need more recipes. You need a system." data-emoji="🍳">
-        <div class="avatar">🍳<div class="status-dot status-idle"></div><div class="unread-badge">💬</div></div>
-        <div class="agent-name">Remy</div>
-        <div class="agent-role">Chef</div>
-        <div class="agent-task">Meal planning</div>
-      </div>
-
-      <div class="agent lena" data-name="Lena Torres" data-role="Gym Coach" data-task="Reviewing week's progress" data-quote="You don't have to feel like it. You just have to show up." data-emoji="💪">
-        <div class="avatar">💪<div class="status-dot status-idle"></div><div class="unread-badge">💬</div></div>
-        <div class="agent-name">Lena</div>
-        <div class="agent-role">Gym Coach</div>
-        <div class="agent-task">Progress review</div>
-      </div>
-
-      <div class="agent val" data-name="Val Oduya" data-role="Finance Manager" data-task="Weekly budget prep" data-quote="Wealth isn't about what you make. It's about what you keep." data-emoji="💰">
-        <div class="avatar">💰<div class="status-dot status-working"></div><div class="unread-badge">💬</div></div>
-        <div class="agent-name">Val</div>
-        <div class="agent-role">Finance</div>
-        <div class="agent-task">Budget prep</div>
-      </div>
-
-      <div class="agent atlas" data-name="Atlas" data-role="Travel Planner" data-task="Ready for trips" data-quote="The best trip is the one you actually take." data-emoji="🗺️">
-        <div class="avatar">🗺️<div class="status-dot status-idle"></div><div class="unread-badge">💬</div></div>
-        <div class="agent-name">Atlas</div>
-        <div class="agent-role">Travel</div>
-        <div class="agent-task">Ready</div>
-      </div>
-
-      <div class="agent nova" data-name="Nova" data-role="HR Advisor" data-task="Ready to help" data-quote="The most caring thing is often the most direct thing." data-emoji="🌟">
-        <div class="avatar">🌟<div class="status-dot status-idle"></div><div class="unread-badge">💬</div></div>
-        <div class="agent-name">Nova</div>
-        <div class="agent-role">HR</div>
-        <div class="agent-task">Ready</div>
-      </div>
-
-      <div class="agent isla" data-name="Isla" data-role="Chief of Staff" data-task="Team coordination" data-quote="Sycophants are useless. I'd rather be helpful than agreeable." data-emoji="🏝️">
-        <div class="avatar">🏝️<div class="status-dot status-working"></div><div class="unread-badge">💬</div></div>
-        <div class="agent-name">Isla</div>
-        <div class="agent-role">Chief of Staff</div>
-        <div class="agent-task">Coordinating</div>
-      </div>
+      <!-- Agents (generated dynamically from config) -->
+      <div id="agentContainer"></div>
     </div>
 
     <div class="legend">
@@ -260,17 +184,7 @@
   <!-- Mobile Bottom Navigation -->
   <div class="mobile-bottom-nav" id="mobileBottomNav">
     <select class="mobile-agent-selector" id="mobileAgentSelector">
-      <option value="isla">🏝️ Isla - Chief of Staff</option>
-      <option value="marcus">🔧 Marcus - Dev Manager</option>
-      <option value="harper">🔍 Harper - QA Manager</option>
-      <option value="eli">🏗️ Eli - Chief Architect</option>
-      <option value="sage">🔭 Sage - Researcher</option>
-      <option value="julie">📣 Julie - Marketing</option>
-      <option value="remy">🍳 Remy - Chef</option>
-      <option value="lena">💪 Lena - Fitness Coach</option>
-      <option value="val">💰 Val - Finance</option>
-      <option value="atlas">🗺️ Atlas - Travel</option>
-      <option value="nova">🌟 Nova - AI Liaison</option>
+      <!-- Options generated dynamically from config -->
     </select>
   </div>
 
@@ -317,6 +231,91 @@
   </div>
   
   <script>
+    // ============================================================
+    // APP CONFIG — loaded from backend before anything renders
+    // ============================================================
+    let APP_CONFIG = null;
+
+    async function loadAppConfig() {
+      try {
+        const res = await fetch('/api/config');
+        if (!res.ok) throw new Error(`Config fetch failed: ${res.status}`);
+        const data = await res.json();
+        if (!data.ok) throw new Error('Config response not ok');
+        APP_CONFIG = data;
+        return APP_CONFIG;
+      } catch (e) {
+        console.error('[Config] Failed to load:', e);
+        document.body.innerHTML = `
+          <div style="display:flex;align-items:center;justify-content:center;height:100vh;background:#1a1a1a;color:#fff;font-family:system-ui;">
+            <div style="text-align:center;max-width:400px;">
+              <h1 style="font-size:2rem;">Backend Unreachable</h1>
+              <p style="color:#888;">Could not load workspace config from the backend API.</p>
+              <p style="color:#666;font-size:0.85rem;">${e.message}</p>
+              <button onclick="location.reload()" style="margin-top:20px;padding:10px 20px;background:#5865F2;color:#fff;border:none;border-radius:8px;cursor:pointer;">Retry</button>
+            </div>
+          </div>`;
+        throw e;
+      }
+    }
+
+    // Generate agent floor elements from config
+    function renderAgentFloor() {
+      const container = document.getElementById('agentContainer');
+      if (!container || !APP_CONFIG) return;
+
+      container.innerHTML = '';
+      for (const [key, agent] of Object.entries(APP_CONFIG.agents)) {
+        const div = document.createElement('div');
+        div.className = `agent ${key}`;
+        div.dataset.name = agent.fullName || agent.name;
+        div.dataset.role = agent.role;
+        div.dataset.task = 'Available';
+        div.dataset.quote = agent.quote || '';
+        div.dataset.emoji = agent.emoji;
+        div.innerHTML = `
+          <div class="avatar">${agent.emoji}<div class="status-dot status-idle"></div><div class="unread-badge">💬</div></div>
+          <div class="agent-name">${agent.name}</div>
+          <div class="agent-role">${agent.role}</div>
+          <div class="agent-task">Available</div>`;
+        container.appendChild(div);
+      }
+    }
+
+    // Generate mobile agent selector options
+    function renderMobileSelector() {
+      const sel = document.getElementById('mobileAgentSelector');
+      if (!sel || !APP_CONFIG) return;
+      sel.innerHTML = Object.entries(APP_CONFIG.agents).map(([key, a]) =>
+        `<option value="${key}">${a.emoji} ${a.name} - ${a.role}</option>`
+      ).join('');
+    }
+
+    // Inject per-agent avatar gradient CSS from config colors
+    function injectAgentStyles() {
+      if (!APP_CONFIG) return;
+      let css = '';
+      for (const [key, agent] of Object.entries(APP_CONFIG.agents)) {
+        if (agent.color) {
+          css += `.agent.${key} .avatar { background: linear-gradient(135deg, ${agent.color.from}, ${agent.color.to}); }\n`;
+        }
+      }
+      if (css) {
+        const style = document.createElement('style');
+        style.id = 'agent-dynamic-styles';
+        style.textContent = css;
+        document.head.appendChild(style);
+      }
+    }
+
+    // Update branding from config
+    function applyBranding() {
+      if (!APP_CONFIG) return;
+      document.title = `${APP_CONFIG.branding.name} - Team HQ`;
+      const metaDesc = document.querySelector('meta[name="description"]');
+      if (metaDesc) metaDesc.content = APP_CONFIG.branding.description || '';
+    }
+
     // Toast Notification System (inlined for reliability)
     class ToastManager {
       constructor() {
@@ -414,7 +413,7 @@
     };
 
     const sidePanel = document.getElementById('sidePanel');
-    const agents = document.querySelectorAll('.agent');
+    let agents = document.querySelectorAll('.agent'); // re-queried after config renders
     const panelClose = document.getElementById('panelClose');
     // Note: tab elements are now built dynamically per-agent by buildTabsForAgent()
     const chatInput = document.getElementById('chatInput');
@@ -425,6 +424,7 @@
 
     // Update office time display
     function updateOfficeTime() {
+      if (!APP_CONFIG) return;
       const now = new Date();
       const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
       const dayName = days[now.getDay()];
@@ -433,41 +433,38 @@
         minute: '2-digit',
         hour12: true
       });
-      document.getElementById('officeTime').textContent = `🏢 The Office - ${dayName} ${time}`;
+      document.getElementById('officeTime').textContent = `🏢 ${APP_CONFIG.branding.name} - ${dayName} ${time}`;
     }
 
-    // Update immediately and every minute
-    updateOfficeTime();
-    setInterval(updateOfficeTime, 60000);
-
-    // Agent greetings
-    const agentGreetings = {
-      isla: "Hey! What can I help you with?",
-      marcus: "What's up? Got a PR for me to look at?",
-      harper: "Testing something right now, but I can chat. What's up?",
-      eli: "Thinking about patterns. What do you need?",
-      sage: "Just found something interesting. What's on your mind?",
-      julie: "Hey! Working on some copy. What do you need?",
-      remy: "Kitchen's open. What can I help with?",
-      lena: "Ready when you are. What's up?",
-      val: "Numbers looking good. What do you need?"
-    };
-
-    // Agent channel names (no Discord dependency)
-    const agentChannels = {
-      isla: { name: "#hq" },
-      marcus: { name: "#mhc" },
-      harper: { name: "#qa" },
-      eli: { name: "#cto-dev" },
-      sage: { name: "#research" },
-      julie: { name: "#marketing" },
-      remy: { name: "#chef" },
-      lena: { name: "#gym" },
-      val: { name: "#finance" }
-    };
+    // Agent greetings / channels — built from config
+    function getAgentGreeting(key) {
+      return APP_CONFIG?.agents[key]?.greeting || 'Hello!';
+    }
+    function getAgentChannel(key) {
+      return APP_CONFIG?.agents[key]?.channel || `#${key}`;
+    }
 
     // API endpoint - same origin (server.js on port 3000)
     const API_BASE = '/api';
+
+    // Load config and render agents before anything else
+    (async () => {
+      try {
+        await loadAppConfig();
+        renderAgentFloor();
+        renderMobileSelector();
+        injectAgentStyles();
+        applyBranding();
+        // Re-query agents after dynamic rendering
+        agents = document.querySelectorAll('.agent');
+        // Kick off time display now that branding is loaded
+        updateOfficeTime();
+        setInterval(updateOfficeTime, 60000);
+      } catch (e) {
+        // loadAppConfig already shows error UI
+        return;
+      }
+    })();
 
     // Cache for agent data
     let agentMemoryCache = {};
@@ -687,7 +684,7 @@
       }
     };
 
-    // Fetch and display Jeremy's priorities
+    // Fetch and display owner's priorities
     async function fetchPriorities() {
       try {
         const response = await fetch(`${API_BASE}/today`);
@@ -1323,8 +1320,8 @@
     // Start a meeting - move everyone to conference
     function startMeeting(meetingType) {
       currentMeeting = meetingType;
-      const allAgents = ['isla', 'marcus', 'harper', 'eli', 'sage', 'julie', 'remy', 'lena', 'val'];
-      allAgents.forEach((agent, idx) => {
+      const allAgentKeys = APP_CONFIG ? Object.keys(APP_CONFIG.agents) : [];
+      allAgentKeys.forEach((agent, idx) => {
         if (idx < conferenceSeats.length) {
           moveAgent(agent, conferenceSeats[idx]);
           seatAssignments[agent] = idx;
@@ -1336,7 +1333,7 @@
     // End meeting - everyone returns to desks
     function endMeeting() {
       currentMeeting = null;
-      ['isla', 'marcus', 'harper', 'eli', 'sage', 'julie', 'remy', 'lena', 'val'].forEach(returnToDesk);
+      (APP_CONFIG ? Object.keys(APP_CONFIG.agents) : []).forEach(returnToDesk);
     }
 
     // Poll-driven animation (called every 5s - must be cheap)
@@ -1484,48 +1481,49 @@
       `;
     }
 
-    // Click on agent to open panel
-    agents.forEach(agent => {
-      agent.addEventListener('click', async () => {
-        // Deselect previous
-        if (selectedAgent) {
-          selectedAgent.classList.remove('selected');
-        }
+    // Click on agent to open panel (event delegation — works with dynamically rendered agents)
+    document.querySelector('.office').addEventListener('click', async (e) => {
+      const agent = e.target.closest('.agent');
+      if (!agent) return;
 
-        // Select new
-        agent.classList.add('selected');
-        selectedAgent = agent;
+      // Deselect previous
+      if (selectedAgent) {
+        selectedAgent.classList.remove('selected');
+      }
 
-        // Update panel
-        const name = agent.dataset.name;
-        const role = agent.dataset.role;
-        const emoji = agent.dataset.emoji;
-        const quote = agent.dataset.quote;
-        const agentKey = agent.classList[1]; // e.g., 'marcus'
+      // Select new
+      agent.classList.add('selected');
+      selectedAgent = agent;
 
-        document.getElementById('panelAvatar').textContent = emoji;
-        document.getElementById('panelName').textContent = name;
-        document.getElementById('panelRole').textContent = role;
+      // Update panel
+      const name = agent.dataset.name;
+      const role = agent.dataset.role;
+      const emoji = agent.dataset.emoji;
+      const quote = agent.dataset.quote;
+      const agentKey = agent.classList[1]; // e.g., 'marcus'
 
-        // Update WebSocket status indicator (driven by chatWs state)
-        const wsUp = chatWs && chatWs.readyState === 1;
-        document.getElementById('wsStatus').textContent = wsUp ? 'Live' : 'Connecting...';
-        document.getElementById('wsStatus').style.color = wsUp ? '#22c55e' : '#f59e0b';
+      document.getElementById('panelAvatar').textContent = emoji;
+      document.getElementById('panelName').textContent = name;
+      document.getElementById('panelRole').textContent = role;
 
-        // Load live chat for this agent
-        loadAgentChat(agentKey);
+      // Update WebSocket status indicator (driven by chatWs state)
+      const wsUp = chatWs && chatWs.readyState === 1;
+      document.getElementById('wsStatus').textContent = wsUp ? 'Live' : 'Connecting...';
+      document.getElementById('wsStatus').style.color = wsUp ? '#22c55e' : '#f59e0b';
 
-        // Show panel immediately
-        sidePanel.classList.remove('hidden');
+      // Load live chat for this agent
+      loadAgentChat(agentKey);
 
-        // Build agent-specific tabs and activate chat
-        buildTabsForAgent(agentKey);
+      // Show panel immediately
+      sidePanel.classList.remove('hidden');
 
-        // Fetch and render memory data (async)
-        const memoryData = await fetchAgentMemory(agentKey);
-        renderMemorySection(memoryData, agentKey, quote);
-        renderStatusSection(memoryData, quote);
-      });
+      // Build agent-specific tabs and activate chat
+      buildTabsForAgent(agentKey);
+
+      // Fetch and render memory data (async)
+      const memoryData = await fetchAgentMemory(agentKey);
+      renderMemorySection(memoryData, agentKey, quote);
+      renderStatusSection(memoryData, quote);
     });
 
     // Close panel
@@ -1558,35 +1556,25 @@
       console.error('Failed to load drafts:', e);
     }
 
-    // Per-agent custom tab configuration
-    // Chat is always first, Memory and Files are always last
-    const AGENT_TABS = {
-      isla:   [{ id: 'action-items', label: '📋 Actions', source: 'action-items' },
-               { id: 'sprint', label: '📊 Sprint', source: 'sprint' }],
-      marcus: [{ id: 'prs', label: '🔀 PRs', source: 'prs' },
-               { id: 'backlog', label: '📋 Backlog', source: 'backlog' }],
-      harper: [{ id: 'bugs', label: '🐛 Bugs', source: 'bugs' },
-               { id: 'testplans', label: '✅ Tests', source: 'testplans' }],
-      eli:    [{ id: 'architecture', label: '🏗️ Arch', source: 'architecture' },
-               { id: 'techdebt', label: '🔧 Debt', source: 'techdebt' }],
-      sage:   [{ id: 'research', label: '📚 Research', source: 'research' },
-               { id: 'findings', label: '🔍 Findings', source: 'findings' }],
-      julie:  [{ id: 'campaigns', label: '📣 Campaigns', source: 'campaigns' },
-               { id: 'analytics', label: '📊 Analytics', source: 'analytics' }],
-      remy:   [{ id: 'recipes', label: '🍳 Recipes', source: 'recipes' },
-               { id: 'mealplan', label: '📅 Meals', source: 'mealplan' }],
-      lena:   [{ id: 'workouts', label: '🏋️ Workouts', source: 'workouts' },
-               { id: 'progress', label: '📈 Progress', source: 'progress' }],
-      val:    [{ id: 'budget', label: '💰 Budget', source: 'budget' },
-               { id: 'reports', label: '📊 Reports', source: 'reports' }],
-      atlas:  [{ id: 'projects', label: '🗺️ Projects', source: 'projects' },
-               { id: 'tasks', label: '📋 Tasks', source: 'tasks' }],
-      nova:   [{ id: 'team', label: '👥 Team', source: 'team' },
-               { id: 'policies', label: '📋 Policies', source: 'policies' }],
-    };
+    // Per-agent custom tab configuration — loaded from APP_CONFIG + runtime tabs
+    function getAgentTabs(agentKey) {
+      if (!APP_CONFIG) return [];
+      const staticTabs = APP_CONFIG.agents[agentKey]?.tabs || [];
+      const runtimeTabs = APP_CONFIG.runtimeTabs?.[agentKey] || [];
+      // Merge: static first, then runtime (skip duplicates by id)
+      const seenIds = new Set(staticTabs.map(t => t.id));
+      const merged = [...staticTabs];
+      for (const rt of runtimeTabs) {
+        if (!seenIds.has(rt.id)) {
+          merged.push(rt);
+          seenIds.add(rt.id);
+        }
+      }
+      return merged;
+    }
 
     function buildTabsForAgent(agentKey) {
-      const customTabs = AGENT_TABS[agentKey] || [];
+      const customTabs = getAgentTabs(agentKey);
       const panelTabsEl = document.querySelector('.panel-tabs');
       const tabContent = document.querySelector('.tab-content');
 
@@ -1811,6 +1799,22 @@
           console.error('[Stream] Error from', msg.agent, msg.error);
           clearStreamingEl(msg.agent);
         }
+
+        // Runtime tab registration: refresh tab bar for affected agent
+        if (msg.type === 'tabs_updated' && msg.agent) {
+          // Reload config to get updated runtime tabs
+          fetch(`${API_BASE}/agent-tabs/${msg.agent}`).then(r => r.json()).then(data => {
+            if (data.ok && APP_CONFIG) {
+              // Update local runtime tabs cache
+              if (!APP_CONFIG.runtimeTabs) APP_CONFIG.runtimeTabs = {};
+              // We can't separate static/runtime here easily, so just store all
+              // The backend merges them; we only need to rebuild the tab bar
+              if (currentAgentKey === msg.agent) {
+                buildTabsForAgent(msg.agent);
+              }
+            }
+          }).catch(() => {});
+        }
       };
 
       chatWs.onclose = () => {
@@ -1979,8 +1983,7 @@
           // Agent message but malformed sourceSession - fallback
           senderDisplay = 'Agent';
         } else {
-          // Jeremy sent this message
-          senderDisplay = 'Jeremy';
+          senderDisplay = APP_CONFIG?.owner?.displayName || 'You';
         }
       } else {
         // Bot response - show current agent's name
@@ -2421,7 +2424,7 @@
       const agentEl = document.querySelector(`.agent.${agentKey}`);
       if (agentEl) agentEl.classList.remove('has-unread');
 
-      const channelName = agentChannels[agentKey]?.name || `#${agentKey}`;
+      const channelName = getAgentChannel(agentKey);
       document.getElementById('chatChannelName').textContent = channelName;
 
       chatMessages.innerHTML = '<div style="text-align: center; color: #666; padding: 20px;">Loading messages...</div>';
@@ -2459,7 +2462,7 @@
     // Parse natural language for movement commands
     function parseNaturalLanguage(text, currentAgent) {
       const lower = text.toLowerCase();
-      const agentNames = ['isla', 'marcus', 'harper', 'eli', 'sage', 'julie', 'remy', 'lena', 'val'];
+      const agentNames = APP_CONFIG ? Object.keys(APP_CONFIG.agents) : [];
 
       console.log('[NL Parser] Checking:', text, 'Current agent:', currentAgent);
 
@@ -2616,7 +2619,7 @@
         agent: currentAgentKey,
         content: text,
         isBot: false,
-        author: 'Jeremy',
+        author: APP_CONFIG?.owner?.displayName || 'You',
         authorId: 'user',
         timestamp: now,
         timestampFormatted: new Date(now).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
@@ -2767,20 +2770,15 @@
       }
     }
 
-    // Override agent click to show overlay on mobile
-    const originalAgentClick = agents.forEach;
-    agents.forEach(agent => {
-      const existingListener = agent.onclick;
-      agent.addEventListener('click', () => {
-        // Update mobile nav when agent clicked from office view
-        const agentKey = agent.classList[1];
-        updateMobileNavActive(agentKey);
-
-        // Show overlay on tablet (not on mobile since chat is primary interface there)
-        if (window.innerWidth > 768 && window.innerWidth <= 1200) {
-          panelOverlay.classList.add('active');
-        }
-      });
+    // Agent click: update mobile nav + show overlay (event delegation — complements main click handler)
+    document.querySelector('.office').addEventListener('click', (e) => {
+      const agent = e.target.closest('.agent');
+      if (!agent) return;
+      const agentKey = agent.classList[1];
+      updateMobileNavActive(agentKey);
+      if (window.innerWidth > 768 && window.innerWidth <= 1200) {
+        panelOverlay.classList.add('active');
+      }
     });
 
     // --- Panel Resize ---
@@ -2825,14 +2823,12 @@
       }
     });
 
-    // --- Mobile: Auto-open Isla's chat on load ---
-    if (window.innerWidth <= 768) {
-      // On mobile, open Isla's chat by default
+    // --- Mobile: Auto-open first agent's chat on load ---
+    if (window.innerWidth <= 768 && APP_CONFIG) {
+      const firstAgentKey = Object.keys(APP_CONFIG.agents)[0];
       setTimeout(() => {
-        const islaAgent = document.querySelector('.agent.isla');
-        if (islaAgent) {
-          islaAgent.click();
-        }
+        const firstAgent = document.querySelector(`.agent.${firstAgentKey}`);
+        if (firstAgent) firstAgent.click();
       }, 500);
     }
 
@@ -2969,20 +2965,10 @@
     const testNotificationBtn = document.getElementById('testNotificationBtn');
     const pushStatusText = document.getElementById('pushStatusText');
 
-    // All agents list
-    const allAgents = [
-      { key: 'isla', emoji: '🏝️', name: 'Isla' },
-      { key: 'marcus', emoji: '🔧', name: 'Marcus' },
-      { key: 'harper', emoji: '🔍', name: 'Harper' },
-      { key: 'eli', emoji: '🏗️', name: 'Eli' },
-      { key: 'sage', emoji: '🔬', name: 'Sage' },
-      { key: 'julie', emoji: '📢', name: 'Julie' },
-      { key: 'remy', emoji: '👨‍🍳', name: 'Remy' },
-      { key: 'lena', emoji: '💪', name: 'Lena' },
-      { key: 'val', emoji: '💰', name: 'Val' },
-      { key: 'atlas', emoji: '🗺️', name: 'Atlas' },
-      { key: 'nova', emoji: '🌟', name: 'Nova' }
-    ];
+    // All agents list — built from config
+    const allAgents = APP_CONFIG
+      ? Object.entries(APP_CONFIG.agents).map(([key, a]) => ({ key, emoji: a.emoji, name: a.name }))
+      : [];
 
     // Load notification settings from localStorage
     function loadNotificationSettings() {

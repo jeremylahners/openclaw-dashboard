@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "branding": {
+    "name": "The Office",
+    "shortName": "Office",
+    "description": "Agent workspace dashboard"
+  },
+  "owner": {
+    "name": "YourName",
+    "displayName": "YourName"
+  },
+  "workspace": {
+    "root": ".."
+  },
+  "agents": {
+    "isla": {
+      "name": "Isla",
+      "fullName": "Isla",
+      "role": "Chief of Staff",
+      "emoji": "🏝️",
+      "channel": "#hq",
+      "quote": "Sycophants are useless. I'd rather be helpful than agreeable.",
+      "greeting": "Hey! What can I help you with?",
+      "color": { "from": "#667eea", "to": "#764ba2" },
+      "tabs": [
+        { "id": "action-items", "label": "📋 Actions", "source": "action-items" },
+        { "id": "sprint", "label": "📊 Sprint", "source": "sprint" }
+      ]
+    },
+    "marcus": {
+      "name": "Marcus",
+      "fullName": "Marcus Chen",
+      "role": "Dev Manager",
+      "emoji": "🔧",
+      "channel": "#mhc",
+      "quote": "Technical debt is just procrastination with a fancier name.",
+      "greeting": "What's up? Got a PR for me to look at?",
+      "color": { "from": "#f093fb", "to": "#f5576c" },
+      "tabs": [
+        { "id": "prs", "label": "🔀 PRs", "source": "prs" },
+        { "id": "backlog", "label": "📋 Backlog", "source": "backlog" }
+      ]
+    }
+  }
+}

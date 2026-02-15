@@ -2,8 +2,10 @@
 messages.json
 messages.json.bak
 config.js
+workspace.config.json
 action-items.json
 push-subscriptions.json
+runtime-tabs.json
 
 # User data folders
 tax-docs-2025/

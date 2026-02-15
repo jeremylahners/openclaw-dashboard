@@ -6,8 +6,13 @@ const webpush = require('web-push');
 const { WebSocketServer, WebSocket } = require('ws');
 const chatDb = require('./db.js');
 
-// Load config
+// Load configs
 const config = require('./config.js');
+const { loadConfig, buildFrontendConfig } = require('./workspace-config.js');
+
+// Load workspace config (agents, branding, owner, paths)
+const wsConfig = loadConfig();
+const { agentSessions, sessionToAgent: wsSessionToAgent, agentChannels, paths: wsPaths } = wsConfig;
 
 // Prevent process crashes from unhandled errors — log and continue
 process.on('uncaughtException', (err) => {
@@ -18,9 +23,8 @@ process.on('unhandledRejection', (reason) => {
   console.error('[FATAL] Unhandled rejection (kept alive):', reason);
 });
 
-const MEMORY_DIR = path.join(__dirname, '..', 'memory', 'agents');
-const STATUS_FILE = path.join(__dirname, '..', 'memory', 'agent-status.json');
-const INTERACTIONS_FILE = path.join(__dirname, '..', 'memory', 'agent-interactions.json');
+const MEMORY_DIR = wsPaths.memoryDir;
+const INTERACTIONS_FILE = wsPaths.interactionsFile;
 const ACTION_ITEMS_FILE = path.join(__dirname, 'action-items.json');
 const PUSH_SUBSCRIPTIONS_FILE = path.join(__dirname, 'push-subscriptions.json');
 const STANDUP_FILE = path.join(__dirname, 'standup.json');
@@ -29,22 +33,6 @@ const PORT = 8081;
 // OpenClaw Gateway config
 const GATEWAY_URL = `http://127.0.0.1:${config.gatewayPort}`;
 const GATEWAY_TOKEN = config.gatewayToken;
-
-// Agent session mapping - Webchat native sessions
-const agentSessions = {
-  isla: "agent:isla:webchat:user",
-  marcus: "agent:marcus:webchat:user",
-  harper: "agent:harper:webchat:user",
-  eli: "agent:eli:webchat:user",
-  sage: "agent:sage:webchat:user",
-  julie: "agent:julie:webchat:user",
-  dash: "agent:dash:webchat:user",
-  remy: "agent:remy:webchat:user",
-  lena: "agent:lena:webchat:user",
-  val: "agent:val:webchat:user",
-  atlas: "agent:atlas:webchat:user",
-  nova: "agent:nova:webchat:user"
-};
 
 // Simple in-memory rate limiter
 const rateLimits = new Map();
@@ -79,10 +67,7 @@ setInterval(() => {
 }, 300000);
 
 // Reverse lookup: session key -> agent name
-const sessionToAgent = {};
-for (const [agent, session] of Object.entries(agentSessions)) {
-  sessionToAgent[session] = agent;
-}
+const sessionToAgent = wsSessionToAgent;
 
 // ============================================================
 // GATEWAY WEBSOCKET CLIENT (server-owned connection)
@@ -443,22 +428,6 @@ function broadcastStreaming(agent, payload) {
 // Start Gateway connection
 gwConnect();
 
-// Agent channel names for display
-const agentChannels = {
-  isla: { name: "#hq" },
-  marcus: { name: "#mhc" },
-  harper: { name: "#qa" },
-  eli: { name: "#cto-dev" },
-  sage: { name: "#research" },
-  julie: { name: "#marketing" },
-  dash: { name: "#dash" },
-  remy: { name: "#chef" },
-  lena: { name: "#gym" },
-  val: { name: "#finance" },
-  atlas: { name: "#travel" },
-  nova: { name: "#hr" }
-};
-
 // ============================================================
 // PWA PUSH NOTIFICATIONS
 // ============================================================
@@ -516,7 +485,7 @@ async function sendPushNotification(agentKey, message) {
     return;
   }
   
-  const agentName = agentKey.charAt(0).toUpperCase() + agentKey.slice(1);
+  const agentName = wsConfig.agents[agentKey]?.name || (agentKey.charAt(0).toUpperCase() + agentKey.slice(1));
   const messagePreview = message.substring(0, 100) + (message.length > 100 ? '...' : '');
   
   const payload = JSON.stringify({
@@ -772,7 +741,7 @@ function parseAgentMemory(content) {
 
 const server = http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   res.setHeader('Content-Type', 'application/json');
   
@@ -821,6 +790,12 @@ const server = http.createServer(async (req, res) => {
   // Gateway status
   else if (req.url === '/gateway/status' && req.method === 'GET') {
     res.end(JSON.stringify({ ok: true, connected: gwConnected }));
+  }
+
+  // Workspace config for frontend (agents, branding, owner — no secrets)
+  else if (req.url === '/config' && req.method === 'GET') {
+    const frontendConfig = buildFrontendConfig(wsConfig, config.vapid?.publicKey || null);
+    res.end(JSON.stringify({ ok: true, ...frontendConfig }));
   }
 
   // Chat v2: Send message to agent (commits user msg + forwards to Gateway)
@@ -946,60 +921,26 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    // Special handling for Remy's mealplan tab - fetch live from Apple Reminders
-    if (agentKey === 'remy' && tabId === 'mealplan') {
-      try {
-        const { spawnSync } = require('child_process');
-        const result = spawnSync('/opt/homebrew/bin/remindctl', ['list', 'Dinner Plan', '--json'], {
-          encoding: 'utf-8'
-        });
-        
-        if (result.error) {
-          throw result.error;
-        }
-        
-        if (result.status !== 0) {
-          throw new Error(`remindctl exited with status ${result.status}: ${result.stderr}`);
-        }
-        
-        const mealPlanJson = result.stdout;
-        const meals = JSON.parse(mealPlanJson || '[]');
-        
-        // Filter to only incomplete items and sort by due date
-        const upcomingMeals = meals
-          .filter(m => !m.isCompleted)
-          .sort((a, b) => {
-            const dateA = new Date(a.dueDate || 0);
-            const dateB = new Date(b.dueDate || 0);
-            return dateA - dateB;
-          })
-          .map(m => ({
-            id: m.id,
-            title: m.title,
-            notes: m.notes,
-            dueDate: m.dueDate,
-            dayOfWeek: new Date(m.dueDate).toLocaleDateString('en-US', { weekday: 'short' }),
-            formattedDate: new Date(m.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-          }));
-        
-        res.end(JSON.stringify({ ok: true, format: 'json', data: upcomingMeals }));
-        return;
-      } catch (e) {
-        console.error('[Agent-Data] Failed to fetch meal plan for remy:', e.message);
-        res.end(JSON.stringify({ ok: true, empty: true }));
-        return;
-      }
-    }
-
-    const basePath = path.join(__dirname, '..', 'files', 'agents', agentKey);
+    const basePath = path.join(wsPaths.agentFilesDir, agentKey);
     const jsonPath = path.join(basePath, `${tabId}.json`);
     const mdPath = path.join(basePath, `${tabId}.md`);
 
     try {
-      if (fs.existsSync(jsonPath)) {
+      const jsonExists = fs.existsSync(jsonPath);
+      const mdExists = fs.existsSync(mdPath);
+
+      // When both formats exist, serve whichever was modified more recently
+      let useJson = jsonExists;
+      if (jsonExists && mdExists) {
+        const jsonMtime = fs.statSync(jsonPath).mtimeMs;
+        const mdMtime = fs.statSync(mdPath).mtimeMs;
+        useJson = jsonMtime >= mdMtime;
+      }
+
+      if (useJson) {
         const data = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
         res.end(JSON.stringify({ ok: true, format: 'json', data }));
-      } else if (fs.existsSync(mdPath)) {
+      } else if (mdExists) {
         const content = fs.readFileSync(mdPath, 'utf8');
         res.end(JSON.stringify({ ok: true, format: 'markdown', content }));
       } else {
@@ -1010,6 +951,83 @@ const server = http.createServer(async (req, res) => {
       res.end(JSON.stringify({ ok: false, error: e.message }));
     }
     return;
+  }
+
+  // Runtime Tab Registration API
+  else if (req.url.match(/^\/agent-tabs\/[a-z]+$/) && req.method === 'POST') {
+    const agentKey = req.url.split('/')[2];
+    if (!agentSessions[agentKey]) {
+      res.statusCode = 404;
+      res.end(JSON.stringify({ ok: false, error: 'Agent not found' }));
+      return;
+    }
+    let body = '';
+    req.on('data', chunk => body += chunk);
+    req.on('end', () => {
+      try {
+        const { tabs } = JSON.parse(body);
+        if (!Array.isArray(tabs)) {
+          res.statusCode = 400;
+          res.end(JSON.stringify({ ok: false, error: 'tabs must be an array' }));
+          return;
+        }
+        if (tabs.length > 10) {
+          res.statusCode = 400;
+          res.end(JSON.stringify({ ok: false, error: 'Max 10 runtime tabs per agent' }));
+          return;
+        }
+        for (const t of tabs) {
+          if (!t.id || !t.label || !t.source) {
+            res.statusCode = 400;
+            res.end(JSON.stringify({ ok: false, error: 'Each tab needs id, label, and source' }));
+            return;
+          }
+        }
+        wsConfig.runtimeTabs[agentKey] = tabs;
+        fs.writeFileSync(wsConfig.runtimeTabsPath, JSON.stringify(wsConfig.runtimeTabs, null, 2));
+        // Broadcast tab update to all connected WebSocket clients
+        broadcastTabsUpdated(agentKey);
+        res.end(JSON.stringify({ ok: true, tabs }));
+      } catch (e) {
+        res.statusCode = 400;
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
+  else if (req.url.match(/^\/agent-tabs\/[a-z]+$/) && req.method === 'GET') {
+    const agentKey = req.url.split('/')[2];
+    if (!agentSessions[agentKey]) {
+      res.statusCode = 404;
+      res.end(JSON.stringify({ ok: false, error: 'Agent not found' }));
+      return;
+    }
+    const staticTabs = wsConfig.agents[agentKey]?.tabs || [];
+    const runtimeTabs = wsConfig.runtimeTabs[agentKey] || [];
+    const seenIds = new Set(staticTabs.map(t => t.id));
+    const merged = [...staticTabs];
+    for (const rt of runtimeTabs) {
+      if (!seenIds.has(rt.id)) { merged.push(rt); seenIds.add(rt.id); }
+    }
+    res.end(JSON.stringify({ ok: true, tabs: merged }));
+  }
+
+  else if (req.url.match(/^\/agent-tabs\/[a-z]+\/[a-z0-9-]+$/) && req.method === 'DELETE') {
+    const parts = req.url.split('/');
+    const agentKey = parts[2];
+    const tabId = parts[3];
+    if (!agentSessions[agentKey]) {
+      res.statusCode = 404;
+      res.end(JSON.stringify({ ok: false, error: 'Agent not found' }));
+      return;
+    }
+    const current = wsConfig.runtimeTabs[agentKey] || [];
+    wsConfig.runtimeTabs[agentKey] = current.filter(t => t.id !== tabId);
+    if (wsConfig.runtimeTabs[agentKey].length === 0) delete wsConfig.runtimeTabs[agentKey];
+    fs.writeFileSync(wsConfig.runtimeTabsPath, JSON.stringify(wsConfig.runtimeTabs, null, 2));
+    broadcastTabsUpdated(agentKey);
+    res.end(JSON.stringify({ ok: true }));
   }
 
   // Interactions
@@ -1024,7 +1042,7 @@ const server = http.createServer(async (req, res) => {
   
   // Today priorities
   else if (req.url === '/today') {
-    const todayPath = path.join(__dirname, '..', 'TODAY.md');
+    const todayPath = wsPaths.todayFile;
     try {
       const content = fs.readFileSync(todayPath, 'utf-8');
       const sections = { focus: [], blocked: [], notes: [], updated: null };
@@ -1208,7 +1226,7 @@ const server = http.createServer(async (req, res) => {
             
             if (sessionKey) {
               const taskText = items[idx].text;
-              const message = `✅ Jeremy completed your action item: "${taskText}"`;
+              const message = `✅ ${wsConfig.owner.displayName} completed your action item: "${taskText}"`;
               
               // Notify agent in background (fire and forget)
               gatewayCall('sessions_send', {
@@ -1247,7 +1265,7 @@ const server = http.createServer(async (req, res) => {
   
   // Files - recursively scan workspace for files
   else if (req.url === '/files') {
-    const workspaceDir = path.join(__dirname, '..');
+    const workspaceDir = wsPaths.workspaceRoot;
     
     // Recursive function to scan directories
     function scanDirectory(dir, relativePath = '') {
@@ -1335,7 +1353,7 @@ const server = http.createServer(async (req, res) => {
   
   else if (req.url.startsWith('/file/') && req.method === 'GET') {
     const filePath = decodeURIComponent(req.url.replace('/file/', ''));
-    const baseDir = path.resolve(__dirname, '..');
+    const baseDir = path.resolve(wsPaths.workspaceRoot);
     const fullPath = path.resolve(baseDir, filePath);
 
     // Secure path traversal check using path.relative
@@ -1440,7 +1458,7 @@ const server = http.createServer(async (req, res) => {
   
   // Push Notifications - Test
   else if (req.url === '/push/test' && req.method === 'POST') {
-    sendPushNotification('isla', 'This is a test notification from OpenClaw Office! 🔔')
+    sendPushNotification(wsConfig.agentKeys[0], `This is a test notification from ${wsConfig.branding.name}! 🔔`)
       .then(() => {
         res.end(JSON.stringify({ ok: true, message: 'Test notification sent' }));
       })
@@ -1570,6 +1588,15 @@ function broadcastMessage(agent, message) {
   }
 }
 
+function broadcastTabsUpdated(agentKey) {
+  const data = JSON.stringify({ type: 'tabs_updated', agent: agentKey });
+  for (const client of wsClients) {
+    if (client.ws.readyState === 1) {
+      client.ws.send(data);
+    }
+  }
+}
+
 function formatMessageForClient(row) {
   const metadata = row.metadata ? (typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata) : {};
   const isAgentMessage = metadata.source === 'agent';
@@ -1590,9 +1617,9 @@ function formatMessageForClient(row) {
     isBot: row.role === 'assistant',
     isAgentMessage: isAgentMessage,
     senderName: senderName,  // The actual agent who sent the message
-    author: row.role === 'user' 
-      ? (isAgentMessage ? (senderName || 'Agent') : 'Jeremy')
-      : (row.agent.charAt(0).toUpperCase() + row.agent.slice(1)),
+    author: row.role === 'user'
+      ? (isAgentMessage ? (senderName || 'Agent') : wsConfig.owner.displayName)
+      : (wsConfig.agents[row.agent]?.name || row.agent.charAt(0).toUpperCase() + row.agent.slice(1)),
     authorId: row.role === 'user' ? 'user' : row.agent,
     timestamp: row.timestamp,
     timestampFormatted: new Date(row.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
