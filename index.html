@@ -99,12 +99,6 @@
         <div class="agent-task">Launch copy</div>
       </div>
 
-      <div class="agent dash" data-name="Dash" data-role="Dashboard Engineer" data-task="Building office UI" data-quote="Good dashboards make complexity visible. Great ones make it actionable." data-emoji="🎨">
-        <div class="avatar">🎨<div class="status-dot status-working"></div><div class="unread-badge">💬</div></div>
-        <div class="agent-name">Dash</div>
-        <div class="agent-role">Dashboard</div>
-        <div class="agent-task">Building UI</div>
-      </div>
 
       <div class="agent remy" data-name="Remy Delacroix" data-role="Chef" data-task="Planning tomorrow's dinner" data-quote="You don't need more recipes. You need a system." data-emoji="🍳">
         <div class="avatar">🍳<div class="status-dot status-idle"></div><div class="unread-badge">💬</div></div>
@@ -272,7 +266,6 @@
       <option value="eli">🏗️ Eli - Chief Architect</option>
       <option value="sage">🔭 Sage - Researcher</option>
       <option value="julie">📣 Julie - Marketing</option>
-      <option value="dash">🎨 Dash - Designer</option>
       <option value="remy">🍳 Remy - Chef</option>
       <option value="lena">💪 Lena - Fitness Coach</option>
       <option value="val">💰 Val - Finance</option>
@@ -455,7 +448,6 @@
       eli: "Thinking about patterns. What do you need?",
       sage: "Just found something interesting. What's on your mind?",
       julie: "Hey! Working on some copy. What do you need?",
-      dash: "Building something cool. Want to see what I'm working on?",
       remy: "Kitchen's open. What can I help with?",
       lena: "Ready when you are. What's up?",
       val: "Numbers looking good. What do you need?"
@@ -469,7 +461,6 @@
       eli: { name: "#cto-dev" },
       sage: { name: "#research" },
       julie: { name: "#marketing" },
-      dash: { name: "#dash" },
       remy: { name: "#chef" },
       lena: { name: "#gym" },
       val: { name: "#finance" }
@@ -1233,7 +1224,6 @@
       harper: { top: 50, left: 160 },
       eli: { top: 50, left: 280 },
       sage: { top: 50, left: 400 },
-      dash: { top: 170, left: 40 },
       julie: { top: 170, left: 220 },
       remy: { top: 60, right: 100 },
       lena: { top: 140, right: 100 },
@@ -1329,7 +1319,7 @@
     // Start a meeting - move everyone to conference
     function startMeeting(meetingType) {
       currentMeeting = meetingType;
-      const allAgents = ['isla', 'marcus', 'harper', 'eli', 'sage', 'dash', 'julie', 'remy', 'lena', 'val'];
+      const allAgents = ['isla', 'marcus', 'harper', 'eli', 'sage', 'julie', 'remy', 'lena', 'val'];
       allAgents.forEach((agent, idx) => {
         if (idx < conferenceSeats.length) {
           moveAgent(agent, conferenceSeats[idx]);
@@ -1342,7 +1332,7 @@
     // End meeting - everyone returns to desks
     function endMeeting() {
       currentMeeting = null;
-      ['isla', 'marcus', 'harper', 'eli', 'sage', 'dash', 'julie', 'remy', 'lena', 'val'].forEach(returnToDesk);
+      ['isla', 'marcus', 'harper', 'eli', 'sage', 'julie', 'remy', 'lena', 'val'].forEach(returnToDesk);
     }
 
     // Poll-driven animation (called every 5s - must be cheap)
@@ -1582,8 +1572,6 @@
                { id: 'progress', label: '📈 Progress', source: 'progress' }],
       val:    [{ id: 'budget', label: '💰 Budget', source: 'budget' },
                { id: 'reports', label: '📊 Reports', source: 'reports' }],
-      dash:   [{ id: 'components', label: '🖥️ UI', source: 'components' },
-               { id: 'roadmap', label: '📋 Roadmap', source: 'roadmap' }],
       atlas:  [{ id: 'projects', label: '🗺️ Projects', source: 'projects' },
                { id: 'tasks', label: '📋 Tasks', source: 'tasks' }],
       nova:   [{ id: 'team', label: '👥 Team', source: 'team' },
@@ -1672,7 +1660,12 @@
           // Use safe markdown rendering with DOMPurify sanitization
           container.innerHTML = `<div class="markdown-view" style="max-width: 800px;">${safeMarkdown(data.content)}</div>`;
         } else if (data.format === 'json') {
-          container.innerHTML = renderAgentDataTable(data.data);
+          // Special rendering for meal plan data
+          if (source === 'mealplan' && Array.isArray(data.data)) {
+            container.innerHTML = renderMealPlanTable(data.data);
+          } else {
+            container.innerHTML = renderAgentDataTable(data.data);
+          }
         } else {
           container.textContent = JSON.stringify(data, null, 2);
         }
@@ -1680,6 +1673,30 @@
       } catch (e) {
         container.innerHTML = `<div style="text-align: center; color: #f59e0b; padding: 20px;">Failed to load: ${e.message}</div>`;
       }
+    }
+
+    function renderMealPlanTable(meals) {
+      if (!meals || meals.length === 0) {
+        return `<div style="text-align: center; color: #666; padding: 40px 20px;">
+          <div style="font-size: 2rem; margin-bottom: 10px;">🍽️</div>
+          <p>No upcoming meals planned.</p>
+          <p style="font-size: 0.85rem; color: #555;">Add meals to the Dinner Plan in Apple Reminders.</p>
+        </div>`;
+      }
+
+      const mealsHtml = meals.map(meal => `
+        <div style="background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); border-radius: 8px; padding: 15px; margin-bottom: 12px; border-left: 4px solid #4ade80;">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 10px;">
+            <div style="flex: 1;">
+              <div style="color: #4ade80; font-size: 0.9rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">${escapeHtml(meal.dayOfWeek)} • ${escapeHtml(meal.formattedDate)}</div>
+              <div style="color: #fff; font-size: 1rem; font-weight: 600; margin-bottom: 6px;">${escapeHtml(meal.title)}</div>
+              ${meal.notes ? `<div style="color: #cbd5e1; font-size: 0.85rem; line-height: 1.4;">${escapeHtml(meal.notes)}</div>` : ''}
+            </div>
+          </div>
+        </div>
+      `).join('');
+
+      return `<div style="color: #888; font-size: 0.85rem; margin-bottom: 12px;">📋 ${meals.length} meal${meals.length !== 1 ? 's' : ''} planned</div>${mealsHtml}`;
     }
 
     function renderAgentDataTable(data) {
@@ -2428,7 +2445,7 @@
     // Parse natural language for movement commands
     function parseNaturalLanguage(text, currentAgent) {
       const lower = text.toLowerCase();
-      const agentNames = ['isla', 'marcus', 'harper', 'eli', 'sage', 'dash', 'julie', 'remy', 'lena', 'val'];
+      const agentNames = ['isla', 'marcus', 'harper', 'eli', 'sage', 'julie', 'remy', 'lena', 'val'];
 
       console.log('[NL Parser] Checking:', text, 'Current agent:', currentAgent);
 
@@ -2942,7 +2959,7 @@
       { key: 'eli', emoji: '🏗️', name: 'Eli' },
       { key: 'sage', emoji: '🔬', name: 'Sage' },
       { key: 'julie', emoji: '📢', name: 'Julie' },
-      { key: 'dash', emoji: '🏃', name: 'Dash' },
+      { key: emoji: '🏃', name: 'Dash' },
       { key: 'remy', emoji: '👨‍🍳', name: 'Remy' },
       { key: 'lena', emoji: '💪', name: 'Lena' },
       { key: 'val', emoji: '💰', name: 'Val' },

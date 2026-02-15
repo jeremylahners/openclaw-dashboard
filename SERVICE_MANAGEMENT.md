@@ -14,7 +14,8 @@
 ### Frontend (HTTP Server)
 - **Label:** `com.openclaw.office-frontend`
 - **Program:** `/opt/homebrew/bin/node /Users/jeremylahners/.openclaw/workspace/office/serve.js`
-- **Port:** 8080
+- **Port:** 3001
+- **URL:** http://localhost:3001
 - **Logs:**
   - stdout: `/tmp/office-frontend.log`
   - stderr: `/tmp/office-frontend.err`

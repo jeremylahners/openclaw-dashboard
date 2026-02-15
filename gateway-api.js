@@ -864,6 +864,51 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // Special handling for Remy's mealplan tab - fetch live from Apple Reminders
+    if (agentKey === 'remy' && tabId === 'mealplan') {
+      try {
+        const { spawnSync } = require('child_process');
+        const result = spawnSync('/opt/homebrew/bin/remindctl', ['list', 'Dinner Plan', '--json'], {
+          encoding: 'utf-8'
+        });
+        
+        if (result.error) {
+          throw result.error;
+        }
+        
+        if (result.status !== 0) {
+          throw new Error(`remindctl exited with status ${result.status}: ${result.stderr}`);
+        }
+        
+        const mealPlanJson = result.stdout;
+        const meals = JSON.parse(mealPlanJson || '[]');
+        
+        // Filter to only incomplete items and sort by due date
+        const upcomingMeals = meals
+          .filter(m => !m.isCompleted)
+          .sort((a, b) => {
+            const dateA = new Date(a.dueDate || 0);
+            const dateB = new Date(b.dueDate || 0);
+            return dateA - dateB;
+          })
+          .map(m => ({
+            id: m.id,
+            title: m.title,
+            notes: m.notes,
+            dueDate: m.dueDate,
+            dayOfWeek: new Date(m.dueDate).toLocaleDateString('en-US', { weekday: 'short' }),
+            formattedDate: new Date(m.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+          }));
+        
+        res.end(JSON.stringify({ ok: true, format: 'json', data: upcomingMeals }));
+        return;
+      } catch (e) {
+        console.error('[Agent-Data] Failed to fetch meal plan for remy:', e.message);
+        res.end(JSON.stringify({ ok: true, empty: true }));
+        return;
+      }
+    }
+
     const basePath = path.join(__dirname, '..', 'files', 'agents', agentKey);
     const jsonPath = path.join(basePath, `${tabId}.json`);
     const mdPath = path.join(basePath, `${tabId}.md`);

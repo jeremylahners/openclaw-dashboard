@@ -9,7 +9,6 @@ export const agentGreetings = {
   eli: "Thinking about patterns. What do you need?",
   sage: "Just found something interesting. What's on your mind?",
   julie: "Hey! Working on some copy. What do you need?",
-  dash: "Building something cool. Want to see what I'm working on?",
   remy: "Kitchen's open. What can I help with?",
   lena: "Ready when you are. What's up?",
   val: "Numbers looking good. What do you need?"
@@ -23,7 +22,6 @@ export const agentChannels = {
   eli: { name: "#cto-dev" },
   sage: { name: "#research" },
   julie: { name: "#marketing" },
-  dash: { name: "#dash" },
   remy: { name: "#chef" },
   lena: { name: "#gym" },
   val: { name: "#finance" }
@@ -35,7 +33,6 @@ export const defaultPositions = {
   harper: { top: 50, left: 160 },
   eli: { top: 50, left: 280 },
   sage: { top: 50, left: 400 },
-  dash: { top: 170, left: 40 },
   julie: { top: 170, left: 220 },
   remy: { top: 60, right: 100 },
   lena: { top: 140, right: 100 },
@@ -56,7 +53,7 @@ export const conferenceSeats = [
 ];
 
 // All agent keys
-export const allAgentKeys = ['isla', 'marcus', 'harper', 'eli', 'sage', 'dash', 'julie', 'remy', 'lena', 'val'];
+export const allAgentKeys = ['isla', 'marcus', 'harper', 'eli', 'sage', 'julie', 'remy', 'lena', 'val'];
 
 // Movement state
 let seatAssignments = {};
