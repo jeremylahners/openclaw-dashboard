@@ -896,6 +896,100 @@
       border: 1px solid rgba(255, 255, 255, 0.2);
     }
 
+    /* Agent-to-Agent Comms Groups */
+    .agent-comms-group {
+      width: 85%;
+      align-self: center;
+      margin: 12px 0;
+      border: 1px solid rgba(167, 139, 250, 0.3);
+      border-radius: 12px;
+      background: rgba(167, 139, 250, 0.05);
+    }
+
+    .agent-comms-group .comms-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.15s;
+    }
+
+    .agent-comms-group .comms-header:hover {
+      background: rgba(167, 139, 250, 0.1);
+    }
+
+    .agent-comms-group .comms-icon {
+      font-size: 1em;
+      flex-shrink: 0;
+    }
+
+    .agent-comms-group .comms-participants {
+      color: #a78bfa;
+      font-weight: 600;
+      font-size: 0.85em;
+      white-space: nowrap;
+    }
+
+    .agent-comms-group .comms-meta {
+      color: #888;
+      font-size: 0.8em;
+      margin-left: auto;
+      white-space: nowrap;
+    }
+
+    .agent-comms-group .comms-chevron {
+      color: #888;
+      font-size: 0.75em;
+      transition: transform 0.2s;
+      flex-shrink: 0;
+    }
+
+    .agent-comms-group:not(.collapsed) .comms-chevron {
+      transform: rotate(90deg);
+    }
+
+    .agent-comms-group .comms-preview {
+      padding: 0 14px 10px;
+      color: #aaa;
+      font-size: 0.82em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      cursor: pointer;
+    }
+
+    .agent-comms-group:not(.collapsed) .comms-preview {
+      display: none;
+    }
+
+    .agent-comms-group .comms-body {
+      border-top: 1px solid rgba(167, 139, 250, 0.15);
+      padding: 8px 10px;
+    }
+
+    .agent-comms-group.collapsed .comms-body {
+      display: none;
+    }
+
+    .agent-comms-group .comms-body .message-bubble {
+      max-width: 100%;
+      margin: 4px 0;
+    }
+
+    @media (max-width: 768px) {
+      .agent-comms-group {
+        width: 100%;
+        border-radius: 8px;
+        margin: 8px 0;
+      }
+
+      .agent-comms-group .comms-body .message-bubble {
+        max-width: 100%;
+      }
+    }
+
     .typing-indicator {
       color: #888;
       font-style: italic;

@@ -114,16 +114,28 @@ async function pollAgentSessions() {
         // Found a new message!
         if (msg.role === 'user') {
           const text = extractMessageText(msg);
-          if (!text || NOISE_REPLIES.test(text.trim())) continue;
-          
+          if (!text || NOISE_REPLIES.test(text.trim()) || isSystemContextMessage(text)) continue;
+
+          // Skip if this message already exists in SQLite (sent by dashboard)
+          // Gateway may normalize whitespace, so compare with collapsed spaces
+          const existingMessages = chatDb.getMessages(agentKey);
+          const normalizedText = text.replace(/\s+/g, ' ').trim();
+          const alreadyStored = existingMessages.some(m =>
+            m.role === 'user' &&
+            m.content.replace(/\s+/g, ' ').trim() === normalizedText &&
+            Math.abs(m.timestamp - msgTimestamp) < 60000
+          );
+          if (alreadyStored) continue;
+
           // Store in SQLite with metadata indicating it's an agent-to-agent message
           const idempotencyKey = `poll-user-${agentKey}-${msgTimestamp}`;
-          const metadata = { source: 'agent' }; // Mark as agent-to-agent, not from Jeremy
+          const senderName = extractSenderFromText(text, wsConfig.agentKeys, agentKey);
+          const metadata = { source: 'agent', senderName: senderName || null };
           const result = chatDb.addMessage(agentKey, 'user', text, msgTimestamp, idempotencyKey, metadata);
-          
+
           if (!result.duplicate) {
             console.log(`[GW] 📨 New incoming message for ${agentKey}: "${text.substring(0, 50)}..."`);
-            
+
             const clientMsg = formatMessageForClient({
               seq: result.seq, agent: agentKey, role: 'user', content: text, timestamp: msgTimestamp, metadata
             });
@@ -328,6 +340,46 @@ function extractMessageText(message) {
 
 const NOISE_REPLIES = /^(NO_REPLY|NO_?|HEARTBEAT_OK|HEARTBEAT_?|ANNOUNCE_SKIP|ANNOUNCE_?)\s*$/i;
 
+// Detect system context messages that shouldn't be displayed in chat
+// These are Gateway-injected context (memory, system logs, timestamps) not real messages
+function isSystemContextMessage(text) {
+  if (!text) return true;
+  const trimmed = text.trim();
+  // System log entries: "System: [2026-02-15 ...]"
+  if (/^System:\s*\[/m.test(trimmed)) return true;
+  // Messages that are purely timestamp-prefixed context (memory injections)
+  // e.g., "[Sun 2026-02-15 15:29 EST] ..."
+  if (/^\[(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2}/m.test(trimmed)) return true;
+  // Multi-line context blocks with timestamp headers
+  if (/^\[\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2}:\d{2}\s+\w+\]/m.test(trimmed)) return true;
+  return false;
+}
+
+// Try to extract sending agent name from message text
+// Checks signatures, prefixes, and "Hey AgentName" / "Thanks, AgentName" addressing
+// When an agent addresses another by name, the SENDER is NOT that name (it's the recipient).
+// So we also check if the agent signs off or introduces themselves.
+function extractSenderFromText(text, knownAgentKeys, recipientKey) {
+  if (!text || !knownAgentKeys?.length) return null;
+  const trimmed = text.trim();
+  for (const key of knownAgentKeys) {
+    // Skip the recipient — if someone addresses "Hey Remy", the sender isn't Remy
+    if (key === recipientKey) continue;
+    const name = key.charAt(0).toUpperCase() + key.slice(1);
+    // Pattern: message signed "—AgentName" or "- AgentName"
+    if (new RegExp(`(?:^|\\n)\\s*[—–-]\\s*${name}\\s*$`, 'i').test(trimmed)) return name;
+    // Pattern: starts with "[AgentName]"
+    if (new RegExp(`^\\[${name}\\]`, 'i').test(trimmed)) return name;
+    // Pattern: sender identifies themselves "This is AgentName" or "It's AgentName"
+    if (new RegExp(`(?:this is|it'?s)\\s+${name}`, 'i').test(trimmed)) return name;
+  }
+  // Fallback: if only one other agent is mentioned by name addressing style
+  // ("Hey X", "Thanks X", "Hi X"), and it matches the recipient, the sender
+  // is likely the OTHER agent. Check which non-recipient agents could be sender
+  // by elimination — if the message addresses the recipient, look for self-references.
+  return null;
+}
+
 function handleGatewayChatEvent(payload) {
   const sessionKey = payload.sessionKey;
   const agent = sessionToAgent[sessionKey];
@@ -337,28 +389,30 @@ function handleGatewayChatEvent(payload) {
   // This captures agent-to-agent messages sent via sessions_send
   if (payload.state === 'final' && payload.message && payload.message.role === 'user') {
     const text = extractMessageText(payload.message);
-    
-    // Filter noise replies and empty messages
-    if (!text || NOISE_REPLIES.test(text.trim())) {
+
+    // Filter noise replies, empty messages, and system context injections
+    if (!text || NOISE_REPLIES.test(text.trim()) || isSystemContextMessage(text)) {
       return;
     }
 
-    // Store incoming message in SQLite
+    // Store incoming message in SQLite with agent-to-agent metadata
     const now = Date.now();
     const idempotencyKey = `gw-user-${agent}-${now}-${Math.random().toString(36).slice(2)}`;
-    const result = chatDb.addMessage(agent, 'user', text, now, idempotencyKey);
+    const senderName = extractSenderFromText(text, wsConfig.agentKeys, agent);
+    const metadata = { source: 'agent', senderName: senderName || null };
+    const result = chatDb.addMessage(agent, 'user', text, now, idempotencyKey, metadata);
 
     if (!result.duplicate) {
-      console.log(`[GW] 📨 Incoming message for ${agent}: "${text.substring(0, 50)}..."`);
-      
+      console.log(`[GW] 📨 Incoming message for ${agent} from ${senderName || 'unknown agent'}: "${text.substring(0, 50)}..."`);
+
       const clientMsg = formatMessageForClient({
-        seq: result.seq, agent, role: 'user', content: text, timestamp: now
+        seq: result.seq, agent, role: 'user', content: text, timestamp: now, metadata
       });
 
       // Broadcast to connected clients
       broadcastMessage(agent, clientMsg);
     }
-    
+
     // Don't process further - this is just an incoming message
     return;
   }
@@ -853,7 +907,8 @@ const server = http.createServer(async (req, res) => {
       res.end(JSON.stringify({ ok: false, error: 'Agent not found' }));
       return;
     }
-    const messages = chatDb.getMessages(agentKey);
+    const messages = chatDb.getMessages(agentKey)
+      .filter(row => !isSystemContextMessage(row.content));
     res.end(JSON.stringify({ ok: true, messages: messages.map(formatMessageForClient) }));
   }
   
@@ -1531,7 +1586,8 @@ wss.on('connection', (ws) => {
       // If client sends lastSeq, only send messages since then
       let messages;
       if (msg.lastSeq && typeof msg.lastSeq === 'number') {
-        messages = chatDb.getMessagesSince(msg.agent, msg.lastSeq);
+        messages = chatDb.getMessagesSince(msg.agent, msg.lastSeq)
+          .filter(row => !isSystemContextMessage(row.content));
         if (messages.length > 0) {
           ws.send(JSON.stringify({
             type: 'history_update',
@@ -1540,7 +1596,8 @@ wss.on('connection', (ws) => {
           }));
         }
       } else {
-        messages = chatDb.getMessages(msg.agent);
+        messages = chatDb.getMessages(msg.agent)
+          .filter(row => !isSystemContextMessage(row.content));
         ws.send(JSON.stringify({
           type: 'history',
           agent: msg.agent,
@@ -1558,7 +1615,8 @@ wss.on('connection', (ws) => {
     if (msg.type === 'sync' && msg.agents) {
       for (const [agent, lastSeq] of Object.entries(msg.agents)) {
         if (!agentSessions[agent]) continue;
-        const newMessages = chatDb.getMessagesSince(agent, lastSeq);
+        const newMessages = chatDb.getMessagesSince(agent, lastSeq)
+          .filter(row => !isSystemContextMessage(row.content));
         if (newMessages.length > 0) {
           ws.send(JSON.stringify({
             type: 'sync_update',
@@ -1601,12 +1659,16 @@ function formatMessageForClient(row) {
   const metadata = row.metadata ? (typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata) : {};
   const isAgentMessage = metadata.source === 'agent';
   
-  // Extract sender name from sourceSession (e.g., "agent:harper:webchat:user" -> "Harper")
+  // Extract sender name: check metadata.senderName first, then try sourceSession
   let senderName = null;
-  if (isAgentMessage && metadata.sourceSession) {
-    const match = metadata.sourceSession.match(/^agent:(\w+):/);
-    if (match) {
-      senderName = match[1].charAt(0).toUpperCase() + match[1].slice(1);
+  if (isAgentMessage) {
+    if (metadata.senderName) {
+      senderName = metadata.senderName;
+    } else if (metadata.sourceSession) {
+      const match = metadata.sourceSession.match(/^agent:(\w+):/);
+      if (match) {
+        senderName = match[1].charAt(0).toUpperCase() + match[1].slice(1);
+      }
     }
   }
   

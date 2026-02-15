@@ -22,7 +22,7 @@
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.8/dist/purify.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/apexcharts@3.45.1/dist/apexcharts.min.js"></script>
-  <link rel="stylesheet" href="css/all-styles.css?v=9">
+  <link rel="stylesheet" href="css/all-styles.css?v=12">
   <link rel="stylesheet" href="css/toast.css?v=3">
   <link rel="stylesheet" href="css/loading.css?v=3">
 </head>
@@ -1917,6 +1917,9 @@
     }
 
     function handleNewMessage(agent, message) {
+      // Filter system context messages before they enter the cache
+      if (isSystemContextContent(message.content)) return;
+
       if (!messageCache.has(agent)) messageCache.set(agent, []);
       const cache = messageCache.get(agent);
 
@@ -1958,7 +1961,7 @@
         if (message.isBot) {
           clearStreamingEl(agent);
         }
-        appendMessageEl(message);
+        appendOrGroupMessage(message);
         autoScroll();
       } else {
         unreadCounts.set(agent, (unreadCounts.get(agent) || 0) + 1);
@@ -2002,11 +2005,150 @@
       return el;
     }
 
+    // Detect system context messages that shouldn't be displayed
+    function isSystemContextContent(text) {
+      if (!text) return false;
+      const t = text.trim();
+      if (/^System:\s*\[/m.test(t)) return true;
+      if (/^\[(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2}/m.test(t)) return true;
+      if (/^\[\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2}:\d{2}\s+\w+\]/m.test(t)) return true;
+      return false;
+    }
+
+    // --- Agent-to-Agent Comms Grouping ---
+
+    let lastMessageWasAgentComms = false;
+
+    function getRelativeTime(timestamp) {
+      if (!timestamp) return '';
+      const diff = Date.now() - timestamp;
+      const mins = Math.floor(diff / 60000);
+      if (mins < 1) return 'just now';
+      if (mins < 60) return `${mins}m ago`;
+      const hrs = Math.floor(mins / 60);
+      if (hrs < 24) return `${hrs}h ago`;
+      const days = Math.floor(hrs / 24);
+      return `${days}d ago`;
+    }
+
+    function getCommsParticipants(messages) {
+      const names = new Set();
+      const currentAgentName = currentAgentKey.charAt(0).toUpperCase() + currentAgentKey.slice(1);
+      let hasUnknownSender = false;
+      for (const m of messages) {
+        if (!m.isBot && m.isAgentMessage) {
+          if (m.senderName && m.senderName !== 'Agent') {
+            names.add(m.senderName);
+          } else {
+            hasUnknownSender = true;
+          }
+        } else if (m.isBot) {
+          names.add(currentAgentName);
+        }
+      }
+      names.add(currentAgentName);
+      // If we have unknown senders and only the current agent name, label it generically
+      if (names.size === 1 && hasUnknownSender) {
+        return 'Agent \u2194 ' + currentAgentName;
+      }
+      const arr = [...names];
+      return arr.length >= 2 ? arr.slice(0, 2).join(' \u2194 ') : arr[0] || 'Agent comms';
+    }
+
+    function groupMessages(filteredMessages) {
+      // Two-pass: first collect candidate runs, then only group runs
+      // that have a true back-and-forth (both an agent msg and a bot reply).
+      const result = [];
+      let currentRun = null;
+
+      for (const m of filteredMessages) {
+        const isUser = !m.isBot;
+        const isAgent = m.isAgentMessage || false;
+
+        if (isUser && isAgent) {
+          // Incoming agent message — start or continue a run
+          if (!currentRun) currentRun = { messages: [], hasAgent: false, hasBot: false };
+          currentRun.messages.push(m);
+          currentRun.hasAgent = true;
+        } else if (m.isBot && currentRun) {
+          // Bot reply while in a candidate run — continue it
+          currentRun.messages.push(m);
+          currentRun.hasBot = true;
+        } else {
+          // Jeremy's message or bot message with no active run — flush
+          if (currentRun) {
+            if (currentRun.hasAgent && currentRun.hasBot) {
+              result.push({ type: 'agent-comms', messages: currentRun.messages });
+            } else {
+              for (const cm of currentRun.messages) {
+                result.push({ type: 'single', message: cm });
+              }
+            }
+            currentRun = null;
+          }
+          result.push({ type: 'single', message: m });
+        }
+      }
+      // Flush trailing run
+      if (currentRun) {
+        if (currentRun.hasAgent && currentRun.hasBot) {
+          result.push({ type: 'agent-comms', messages: currentRun.messages });
+        } else {
+          for (const cm of currentRun.messages) {
+            result.push({ type: 'single', message: cm });
+          }
+        }
+      }
+      return result;
+    }
+
+    function createCommsGroupEl(messages) {
+      const group = document.createElement('div');
+      group.className = 'agent-comms-group collapsed';
+
+      const participants = getCommsParticipants(messages);
+      const lastTs = messages[messages.length - 1]?.timestamp;
+      const relTime = getRelativeTime(lastTs);
+      const firstContent = (messages[0]?.content || '').slice(0, 80);
+
+      const header = document.createElement('div');
+      header.className = 'comms-header';
+      header.innerHTML = `
+        <span class="comms-icon">\uD83D\uDCAC</span>
+        <span class="comms-participants">${escapeHtml(participants)}</span>
+        <span class="comms-meta">${messages.length} msg${messages.length !== 1 ? 's' : ''}${relTime ? ' \u00B7 ' + relTime : ''}</span>
+        <span class="comms-chevron">\u25B6</span>`;
+
+      const preview = document.createElement('div');
+      preview.className = 'comms-preview';
+      preview.textContent = firstContent + (firstContent.length >= 80 ? '...' : '');
+
+      const body = document.createElement('div');
+      body.className = 'comms-body';
+      for (const m of messages) {
+        body.appendChild(createMessageEl(m));
+      }
+
+      const toggle = () => group.classList.toggle('collapsed');
+      header.addEventListener('click', toggle);
+      preview.addEventListener('click', toggle);
+
+      group.appendChild(header);
+      group.appendChild(preview);
+      group.appendChild(body);
+      return group;
+    }
+
     function renderAllMessages(agent, messages) {
       const filtered = messages.filter(m => {
-        if (!m.isBot) return true;
         const content = (m.content || '').trim();
-        return !/^(NO_REPLY|NO_?|HEARTBEAT_OK|HEARTBEAT_?|ANNOUNCE_SKIP|ANNOUNCE_?)\s*$/i.test(content);
+        // Filter system context messages (from any role)
+        if (isSystemContextContent(content)) return false;
+        // Filter bot noise replies
+        if (m.isBot) {
+          return !/^(NO_REPLY|NO_?|HEARTBEAT_OK|HEARTBEAT_?|ANNOUNCE_SKIP|ANNOUNCE_?)\s*$/i.test(content);
+        }
+        return true;
       });
 
       if (filtered.length === 0) {
@@ -2016,10 +2158,16 @@
 
       chatMessages.innerHTML = '';
       const fragment = document.createDocumentFragment();
-      for (const m of filtered) {
-        fragment.appendChild(createMessageEl(m));
+      const groups = groupMessages(filtered);
+      for (const group of groups) {
+        if (group.type === 'single') {
+          fragment.appendChild(createMessageEl(group.message));
+        } else {
+          fragment.appendChild(createCommsGroupEl(group.messages));
+        }
       }
       chatMessages.appendChild(fragment);
+      lastMessageWasAgentComms = groups.length > 0 && groups[groups.length - 1].type === 'agent-comms';
 
       const ss = streamingState.get(agent);
       if (ss?.el) {
@@ -2044,6 +2192,50 @@
 
       chatMessages.appendChild(createMessageEl(message));
       setTimeout(() => renderPendingCharts(), 50);
+    }
+
+    function getLastNonStreamingChild() {
+      const children = chatMessages.children;
+      for (let i = children.length - 1; i >= 0; i--) {
+        if (!children[i].classList.contains('streaming-indicator')) return children[i];
+      }
+      return null;
+    }
+
+    function addMessageToExistingGroup(groupEl, message) {
+      const body = groupEl.querySelector('.comms-body');
+      body.appendChild(createMessageEl(message));
+      const count = body.children.length;
+      const meta = groupEl.querySelector('.comms-meta');
+      meta.textContent = `${count} msg${count !== 1 ? 's' : ''} \u00B7 ${getRelativeTime(message.timestamp)}`;
+      setTimeout(() => renderPendingCharts(), 50);
+    }
+
+    function appendOrGroupMessage(message) {
+      const isAgent = !message.isBot && (message.isAgentMessage || false);
+      const lastChild = getLastNonStreamingChild();
+      const lastIsGroup = lastChild && lastChild.classList.contains('agent-comms-group');
+
+      if (isAgent) {
+        // Incoming agent message — add to existing group or start pending
+        lastMessageWasAgentComms = true;
+        if (lastIsGroup) {
+          addMessageToExistingGroup(lastChild, message);
+        } else {
+          // Start a new group (may be promoted to full group when bot replies)
+          const groupEl = createCommsGroupEl([message]);
+          const placeholder = chatMessages.querySelector('div[style*="text-align: center"]');
+          if (placeholder) placeholder.remove();
+          chatMessages.appendChild(groupEl);
+        }
+      } else if (message.isBot && lastMessageWasAgentComms && lastIsGroup) {
+        // Bot replying in an active agent-comms run — add to group
+        addMessageToExistingGroup(lastChild, message);
+      } else {
+        // Jeremy's message or bot without active comms — render normally
+        lastMessageWasAgentComms = false;
+        appendMessageEl(message);
+      }
     }
 
     function autoScroll(force = false) {
