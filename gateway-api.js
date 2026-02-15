@@ -82,15 +82,16 @@ async function pollAgentSessions() {
           const text = extractMessageText(msg);
           if (!text || NOISE_REPLIES.test(text.trim())) continue;
           
-          // Store in SQLite
+          // Store in SQLite with metadata indicating it's an agent-to-agent message
           const idempotencyKey = `poll-user-${agentKey}-${msgTimestamp}`;
-          const result = chatDb.addMessage(agentKey, 'user', text, msgTimestamp, idempotencyKey);
+          const metadata = { source: 'agent' }; // Mark as agent-to-agent, not from Jeremy
+          const result = chatDb.addMessage(agentKey, 'user', text, msgTimestamp, idempotencyKey, metadata);
           
           if (!result.duplicate) {
             console.log(`[GW] 📨 New incoming message for ${agentKey}: "${text.substring(0, 50)}..."`);
             
             const clientMsg = formatMessageForClient({
-              seq: result.seq, agent: agentKey, role: 'user', content: text, timestamp: msgTimestamp
+              seq: result.seq, agent: agentKey, role: 'user', content: text, timestamp: msgTimestamp, metadata
             });
             
             broadcastMessage(agentKey, clientMsg);
@@ -1378,14 +1379,21 @@ function broadcastMessage(agent, message) {
 }
 
 function formatMessageForClient(row) {
+  const metadata = row.metadata ? (typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata) : {};
+  const isAgentMessage = metadata.source === 'agent';
+  
   return {
     seq: row.seq,
     agent: row.agent,
     content: row.content,
     isBot: row.role === 'assistant',
-    author: row.role === 'user' ? 'Jeremy' : (row.agent.charAt(0).toUpperCase() + row.agent.slice(1)),
+    isAgentMessage: isAgentMessage,
+    author: row.role === 'user' 
+      ? (isAgentMessage ? 'Agent' : 'Jeremy')
+      : (row.agent.charAt(0).toUpperCase() + row.agent.slice(1)),
     authorId: row.role === 'user' ? 'user' : row.agent,
     timestamp: row.timestamp,
-    timestampFormatted: new Date(row.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+    timestampFormatted: new Date(row.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+    metadata: metadata
   };
 }

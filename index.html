@@ -1899,14 +1899,19 @@
 
     function createMessageEl(m) {
       const isUser = !m.isBot;
+      const isAgentMessage = m.isAgentMessage || false;
       const agentEl = document.querySelector(`.agent.${currentAgentKey}`);
       const agentEmoji = agentEl?.dataset?.emoji || '🤖';
+
+      // Agent-to-agent messages show with agent emoji instead of Jeremy's crown
+      const avatarEmoji = isUser ? (isAgentMessage ? '🤖' : '👑') : agentEmoji;
+      const avatarClass = isUser ? (isAgentMessage ? 'agent-msg' : 'jeremy') : 'bot';
 
       const el = document.createElement('div');
       el.className = `message-bubble ${isUser ? 'you' : 'them'}`;
       el.dataset.seq = m.seq;
       el.innerHTML = `
-        <div class="bubble-avatar ${isUser ? 'jeremy' : 'bot'}">${isUser ? '👑' : agentEmoji}</div>
+        <div class="bubble-avatar ${avatarClass}">${avatarEmoji}</div>
         <div class="bubble-content">
           <div class="bubble-text">${isUser ? escapeHtml(m.content || '') : formatMarkdown(m.content || '')}</div>
           <div class="bubble-time">${m.timestampFormatted || ''}</div>
