@@ -167,19 +167,34 @@ if (m.role === 'agent') {
 
 ## Questions for Harper
 
-1. Does the Gateway emit events when messages are sent to agent sessions?
-2. What event type/payload structure?
-3. Can we subscribe to specific session events as an operator?
-4. Is there existing functionality we're not using?
+1. ✅ Does the Gateway emit events when messages are sent to agent sessions? **YES - via `chat.subscribe`**
+2. ✅ What event type/payload structure? **`event:"chat"` with state/message/sessionKey**
+3. ✅ Can we subscribe to specific session events as an operator? **YES - `chat.subscribe({ sessionKey })`**
+4. ✅ Is there existing functionality we're not using? **YES - we're not calling `chat.subscribe`**
+
+## Gateway Investigation Results (2026-02-14 21:00 EST)
+
+**✅ SOLUTION FOUND - NO GATEWAY MODIFICATIONS NEEDED**
+
+The OpenClaw Gateway already supports chat subscriptions via `chat.subscribe` method:
+- **Method:** `chat.subscribe({ sessionKey })`
+- **Event:** `event:"chat"` (push updates for subscribed sessions)
+- **Documentation:** `/opt/homebrew/lib/node_modules/openclaw/docs/platforms/android.md`
+
+**Current gap:** Office dashboard connects to Gateway but never calls `chat.subscribe`, so it only receives events for messages it sends itself.
+
+**Fix:** Call `chat.subscribe` for all agent sessions after connect, then capture incoming `role:"user"` messages in `handleGatewayChatEvent`.
+
+See `GATEWAY_CAPABILITIES.md` for full investigation details.
 
 ## Status
 
 - [x] Root cause identified
 - [x] Solutions proposed
-- [ ] Gateway capabilities confirmed (waiting on Harper)
-- [ ] Solution chosen
-- [ ] Backend implementation
-- [ ] Frontend implementation
+- [x] Gateway capabilities confirmed ✅ `chat.subscribe` exists
+- [x] Solution chosen → **Option A (Gateway events)**
+- [ ] Backend implementation (estimated 1 hour)
+- [ ] Frontend implementation (no changes needed)
 - [ ] Testing
 
 ---
