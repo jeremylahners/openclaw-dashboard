@@ -508,10 +508,10 @@
       transition: top 1s ease-out, left 1s ease-out, right 1s ease-out, bottom 1s ease-out, transform 1s ease-out;
     }
 
-    .marcus { top: 50px; left: 56px; }
-    .harper { top: 50px; left: 172px; }
-    .eli { top: 50px; left: 288px; }
-    .sage { top: 50px; left: 404px; }
+    .marcus { top: 60px; left: 56px; }
+    .harper { top: 60px; left: 172px; }
+    .eli { top: 60px; left: 288px; }
+    .sage { top: 60px; left: 404px; }
     .dash { top: 170px; left: 40px; }
     .julie { top: 170px; left: 288px; }
 
