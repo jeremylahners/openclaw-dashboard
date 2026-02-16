@@ -514,11 +514,11 @@
     .dash { top: 170px; left: 40px; }
     .julie { top: 170px; left: 220px; }
 
-    .remy { top: 60px; right: 130px; }
-    .lena { top: 140px; right: 130px; }
+    .remy { top: 60px; right: 100px; }
+    .lena { top: 140px; right: 100px; }
 
-    .val { top: 270px; right: 130px; }
-    .atlas { bottom: 90px; right: 130px; }
+    .val { top: 270px; right: 100px; }
+    .atlas { bottom: 90px; right: 100px; }
     .nova { top: 170px; left: 400px; }
 
     .isla { bottom: -10px; left: 50%; transform: translateX(-50%); }
