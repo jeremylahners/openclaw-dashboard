@@ -460,6 +460,27 @@
         // Kick off time display now that branding is loaded
         updateOfficeTime();
         setInterval(updateOfficeTime, 60000);
+
+        // Mobile: auto-open first agent's chat now that DOM is ready
+        if (window.innerWidth <= 768 && APP_CONFIG) {
+          const firstAgentKey = Object.keys(APP_CONFIG.agents)[0];
+          const firstAgent = document.querySelector(`.agent.${firstAgentKey}`);
+          if (firstAgent) {
+            firstAgent.classList.add('selected');
+            selectedAgent = firstAgent;
+            document.getElementById('panelAvatar').textContent = firstAgent.dataset.emoji;
+            document.getElementById('panelName').textContent = firstAgent.dataset.name;
+            document.getElementById('panelRole').textContent = firstAgent.dataset.role;
+            loadAgentChat(firstAgentKey);
+            sidePanel.classList.remove('hidden');
+            buildTabsForAgent(firstAgentKey);
+            updateMobileNavActive(firstAgentKey);
+            fetchAgentMemory(firstAgentKey).then(data => {
+              renderMemorySection(data, firstAgentKey, firstAgent.dataset.quote);
+              renderStatusSection(data, firstAgent.dataset.quote);
+            });
+          }
+        }
       } catch (e) {
         // loadAppConfig already shows error UI
         return;
@@ -3015,36 +3036,7 @@
       }
     });
 
-    // --- Mobile: Auto-open first agent's chat on load ---
-    if (window.innerWidth <= 768 && APP_CONFIG) {
-      const firstAgentKey = Object.keys(APP_CONFIG.agents)[0];
-      setTimeout(() => {
-        const firstAgent = document.querySelector(`.agent.${firstAgentKey}`);
-        if (firstAgent) {
-          // Simulate full agent selection (same as click handler)
-          if (selectedAgent) selectedAgent.classList.remove('selected');
-          firstAgent.classList.add('selected');
-          selectedAgent = firstAgent;
-
-          const name = firstAgent.dataset.name;
-          const role = firstAgent.dataset.role;
-          const emoji = firstAgent.dataset.emoji;
-          document.getElementById('panelAvatar').textContent = emoji;
-          document.getElementById('panelName').textContent = name;
-          document.getElementById('panelRole').textContent = role;
-
-          loadAgentChat(firstAgentKey);
-          sidePanel.classList.remove('hidden');
-          buildTabsForAgent(firstAgentKey);
-          updateMobileNavActive(firstAgentKey);
-
-          fetchAgentMemory(firstAgentKey).then(data => {
-            renderMemorySection(data, firstAgentKey, firstAgent.dataset.quote);
-            renderStatusSection(data, firstAgent.dataset.quote);
-          });
-        }
-      }, 500);
-    }
+    // Mobile auto-open is handled in the async init block after agents render
 
     // ============================================================
     // PWA SERVICE WORKER & PUSH NOTIFICATIONS
