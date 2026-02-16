@@ -126,6 +126,19 @@ office/
 
 ## Development
 
+### Mobile Testing
+
+**ALWAYS test mobile changes in Chrome DevTools mobile emulation before deploying.**
+
+See [MOBILE_TESTING.md](./MOBILE_TESTING.md) for:
+- Quick mobile testing workflow
+- Chrome DevTools device emulation setup
+- OpenClaw Relay integration for automated testing
+- Pre-deploy checklist
+- Common mobile pitfalls to avoid
+
+Mobile emulation catches 90% of mobile bugs instantly - use it first!
+
 ### Message Cache
 
 Conversations are stored in `messages.json` in this format:

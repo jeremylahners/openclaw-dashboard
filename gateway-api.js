@@ -123,10 +123,9 @@ async function pollAgentSessions() {
           // If no provenance or not inter-session, this is likely Jeremy's message
           // Skip if already stored from dashboard send
           if (!isInterSession) {
-            const existingMessages = chatDb.getMessages(agentKey);
+            const recentMsgs = chatDb.getRecentUserMessagesForAgent(agentKey, msgTimestamp - 60000);
             const normalizedText = text.replace(/\s+/g, ' ').trim();
-            const alreadyStored = existingMessages.some(m =>
-              m.role === 'user' &&
+            const alreadyStored = recentMsgs.some(m =>
               m.content.replace(/\s+/g, ' ').trim() === normalizedText &&
               Math.abs(m.timestamp - msgTimestamp) < 60000
             );

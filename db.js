@@ -48,6 +48,11 @@ const checkContentDuplicate = db.prepare(
   'SELECT seq FROM messages WHERE agent = ? AND role = ? AND content = ? AND ABS(timestamp - ?) < 10000'
 );
 
+// For polling dedup: get recent user messages within a time window
+const getRecentUserMessages = db.prepare(
+  'SELECT content, timestamp FROM messages WHERE agent = ? AND role = ? AND timestamp > ? ORDER BY seq DESC LIMIT 20'
+);
+
 function addMessage(agent, role, content, timestamp, idempotencyKey = null, metadata = null) {
   // If idempotency key provided, check for duplicate first
   if (idempotencyKey) {
@@ -86,4 +91,8 @@ function getMessagesSince(agent, sinceSeq) {
   return getByAgentSince.all(agent, sinceSeq);
 }
 
-module.exports = { addMessage, getMessages, getMessagesSince, db };
+function getRecentUserMessagesForAgent(agent, sinceTimestamp) {
+  return getRecentUserMessages.all(agent, 'user', sinceTimestamp);
+}
+
+module.exports = { addMessage, getMessages, getMessagesSince, getRecentUserMessagesForAgent, db };
