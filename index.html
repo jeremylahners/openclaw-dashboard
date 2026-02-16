@@ -1888,6 +1888,15 @@
             const lastSeq = getLastSeq(currentAgentKey);
             chatWs.send(JSON.stringify({ type: 'subscribe', agent: currentAgentKey, lastSeq }));
           }
+          // Refresh all non-chat tab data
+          fetchPriorities();
+          fetchStandup();
+          fetchFiles();
+          pollInteractions();
+          // Clear agent memory cache so Memory/Status tabs get fresh data
+          agentMemoryCache = {};
+          // Clear custom tab loaded flags so they re-fetch on next view
+          document.querySelectorAll('.tab-pane[data-loaded]').forEach(p => delete p.dataset.loaded);
         }, 500);
       }
     });
