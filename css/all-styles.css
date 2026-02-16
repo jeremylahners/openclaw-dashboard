@@ -378,10 +378,43 @@
         min-height: 0;
       }
 
-      /* Message bubbles more compact */
+      /* Message bubbles - lock font size to prevent markdown scaling */
       .message-bubble {
         max-width: 85%;
-        font-size: 0.9rem;
+        font-size: 14px;
+        -webkit-text-size-adjust: none;
+        text-size-adjust: none;
+      }
+
+      .bubble-text {
+        font-size: 14px !important;
+      }
+
+      .bubble-text p,
+      .bubble-text li,
+      .bubble-text blockquote,
+      .bubble-text td,
+      .bubble-text th,
+      .bubble-text span,
+      .bubble-text div,
+      .bubble-text strong,
+      .bubble-text em,
+      .bubble-text a {
+        font-size: 14px !important;
+      }
+
+      .bubble-text h1,
+      .bubble-text h2,
+      .bubble-text h3,
+      .bubble-text h4,
+      .bubble-text h5,
+      .bubble-text h6 {
+        font-size: 14px !important;
+      }
+
+      .bubble-text code,
+      .bubble-text pre code {
+        font-size: 12px !important;
       }
     }
 
