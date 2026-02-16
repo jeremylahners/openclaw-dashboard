@@ -508,19 +508,19 @@
       transition: top 1s ease-out, left 1s ease-out, right 1s ease-out, bottom 1s ease-out, transform 1s ease-out;
     }
 
-    .marcus { top: 50px; left: 40px; }
-    .harper { top: 50px; left: 160px; }
-    .eli { top: 50px; left: 280px; }
-    .sage { top: 50px; left: 400px; }
+    .marcus { top: 50px; left: 56px; }
+    .harper { top: 50px; left: 172px; }
+    .eli { top: 50px; left: 288px; }
+    .sage { top: 50px; left: 404px; }
     .dash { top: 170px; left: 40px; }
-    .julie { top: 170px; left: 220px; }
+    .julie { top: 170px; left: 288px; }
 
     .remy { top: 60px; right: 90px; }
     .lena { top: 140px; right: 90px; }
 
     .val { top: 270px; right: 90px; }
     .atlas { bottom: 90px; right: 90px; }
-    .nova { top: 170px; left: 400px; }
+    .nova { top: 170px; left: 404px; }
 
     .isla { bottom: -10px; left: 50%; transform: translateX(-50%); }
     .isla:hover { transform: translateX(-50%) scale(1.1); transition: transform 0.2s ease; }
