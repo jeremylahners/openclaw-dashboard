@@ -106,6 +106,7 @@
       align-items: center;
       cursor: pointer;
       transition: transform 0.2s, filter 0.2s;
+      width: 80px; /* Fixed width so text length doesn't affect alignment */
     }
 
     .agent:hover {
