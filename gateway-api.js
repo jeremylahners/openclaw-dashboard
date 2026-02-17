@@ -1290,11 +1290,12 @@ const server = http.createServer(async (req, res) => {
         const logText = agent ? `${text} (added by ${agent})` : text;
         console.log(`📋 Action item added: ${logText}`);
         
-        res.end(JSON.stringify({ 
-          ok: true, 
+        res.end(JSON.stringify({
+          ok: true,
           message: 'Action item added to dashboard checklist',
           item: newItem
         }));
+        broadcastToAllClients({ type: 'priorities_updated' });
       } catch (e) {
         res.statusCode = 400;
         res.end(JSON.stringify({ ok: false, error: 'Invalid JSON' }));
@@ -1341,6 +1342,7 @@ const server = http.createServer(async (req, res) => {
           
           saveActionItems(items);
           res.end(JSON.stringify({ ok: true, item: items[idx] }));
+          broadcastToAllClients({ type: 'priorities_updated' });
         } else {
           res.statusCode = 404;
           res.end(JSON.stringify({ ok: false, error: 'Item not found' }));
@@ -1676,6 +1678,15 @@ wss.on('connection', (ws) => {
     console.log('[WS-Chat] Client disconnected, total:', wsClients.size);
   });
 });
+
+function broadcastToAllClients(payload) {
+  const data = JSON.stringify(payload);
+  for (const client of wsClients) {
+    if (client.ws.readyState === 1) {
+      client.ws.send(data);
+    }
+  }
+}
 
 function broadcastMessage(agent, message) {
   for (const client of wsClients) {

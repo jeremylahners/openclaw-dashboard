@@ -1803,6 +1803,10 @@
           handleHistoryUpdate(msg.agent, msg.messages);
         }
 
+        if (msg.type === 'priorities_updated') {
+          fetchPriorities();
+        }
+
         // Server-owned Gateway streaming events
         if (msg.type === 'stream_delta') {
           updateStreaming(msg.agent, msg.text);
