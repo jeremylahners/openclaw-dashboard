@@ -264,7 +264,7 @@ function gwConnect() {
       type: 'req', id: connId, method: 'connect',
       params: {
         minProtocol: 3, maxProtocol: 3,
-        client: { id: 'webchat-ui', version: '1.0.0', platform: 'web', mode: 'ui' },
+        client: { id: 'openclaw-control-ui', version: '1.0.0', platform: 'web', mode: 'ui' },
         role: 'operator',
         scopes: ['operator.read', 'operator.write', 'operator.admin'],
         auth: { token: GATEWAY_TOKEN }

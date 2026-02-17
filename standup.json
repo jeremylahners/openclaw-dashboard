@@ -1,7 +1,7 @@
 {
-  "date": "Fri, Feb 13",
-  "time": "3:55 PM",
-  "timestamp": 1771016100000,
+  "date": "Tue, Feb 17",
+  "time": "4:20 PM",
+  "timestamp": 1771363232000,
   "updates": [
     {
       "agent": "marcus",
@@ -9,11 +9,26 @@
       "name": "Marcus",
       "role": "Dev",
       "items": [
-        { "status": "✅", "text": "Fixed toast notification bug (SW caching)" },
-        { "status": "🔄", "text": "Waiting on chat jumping feedback" }
+        { "status": "✅", "text": "Mobile tab switching bug (CSS breakpoint)" },
+        { "status": "✅", "text": "Agent alignment in office view" },
+        { "status": "✅", "text": "Message deduplication bug" },
+        { "status": "✅", "text": "Mobile keyboard dismissal improvements" },
+        { "status": "🔄", "text": "Available for next task" }
       ],
-      "learned": "SW caching gotcha — bump version + never cache HTML + no-cache headers",
+      "learned": "Mobile testing workflow - Chrome DevTools catches 90% of bugs before deploying",
       "blockers": []
+    },
+    {
+      "agent": "harper",
+      "emoji": "🔍",
+      "name": "Harper",
+      "role": "QA",
+      "items": [
+        { "status": "🔄", "text": "QA testing for Office Dashboard mobile view" },
+        { "status": "⏳", "text": "Waiting on mobile device testing - can't verify keyboard dismissal on real hardware" }
+      ],
+      "learned": "Stay in my lane: report bugs to Marcus, don't fix them myself",
+      "blockers": ["No access to mobile devices for hands-on testing"]
     },
     {
       "agent": "eli",
@@ -21,9 +36,9 @@
       "name": "Eli",
       "role": "Architect",
       "items": [
-        { "status": "🔄", "text": "Standby, available for PWA support or dashboard refactoring" }
+        { "status": "⚠️", "text": "Session timed out" }
       ],
-      "learned": "Agent-to-agent communication workflow, iOS-only architecture",
+      "learned": null,
       "blockers": []
     },
     {
@@ -32,9 +47,9 @@
       "name": "Sage",
       "role": "Research",
       "items": [
-        { "status": "🔄", "text": "Available for research tasks, quiet week" }
+        { "status": "🔄", "text": "No active research tasks - ready for assignments" }
       ],
-      "learned": "Chart support for research visualization",
+      "learned": null,
       "blockers": []
     },
     {
@@ -43,11 +58,39 @@
       "name": "Julie",
       "role": "Marketing",
       "items": [
-        { "status": "⏳", "text": "Waiting for MHC launch priorities" },
-        { "status": "🔄", "text": "Ready to work on App Store copy/launch messaging" }
+        { "status": "✅", "text": "Sports betting presentation complete (23→30 slides with technical depth)" },
+        { "status": "🔄", "text": "On standby, no active tasks" }
       ],
-      "learned": null,
+      "learned": "presentations skill + Marp CLI works well for technical decks",
       "blockers": []
+    },
+    {
+      "agent": "remy",
+      "emoji": "🍳",
+      "name": "Remy",
+      "role": "Food",
+      "items": [
+        { "status": "✅", "text": "Fixed Dinner Plan dates (off by a day)" },
+        { "status": "✅", "text": "Created 3 full recipes (Tomato Bisque, Shrimp Risotto, Chicken Alfredo)" },
+        { "status": "✅", "text": "Grocery list added to Apple Reminders" },
+        { "status": "✅", "text": "Updated recipes.md (quick reference only)" },
+        { "status": "🔄", "text": "Seymour Day 6 - showing hooch, bubbles, trending right" }
+      ],
+      "learned": "Apple Notes recipes must use HTML formatting; recipes.md is index only",
+      "blockers": []
+    },
+    {
+      "agent": "lena",
+      "emoji": "💪",
+      "name": "Lena",
+      "role": "Fitness",
+      "items": [
+        { "status": "✅", "text": "Rebuilt workout cron - dynamic 'next up' rotation instead of fixed days" },
+        { "status": "✅", "text": "Updated MEMORY.md with proper Push/Pull/Lower cycle" },
+        { "status": "⚠️", "text": "Need clarity on emoji usage in workout plans" }
+      ],
+      "learned": "Dynamic rotation handles real life (travel, sick days) better than rigid schedules",
+      "blockers": ["Minor: unclear on emoji expectations for workout notes"]
     },
     {
       "agent": "val",
@@ -55,7 +98,7 @@
       "name": "Val",
       "role": "Finance",
       "items": [
-        { "status": "🔄", "text": "No active projects, available" }
+        { "status": "🔄", "text": "No active projects - available for tasks" }
       ],
       "learned": null,
       "blockers": []
@@ -66,39 +109,17 @@
       "name": "Atlas",
       "role": "Travel",
       "items": [
-        { "status": "✅", "text": "Updated USER.md with family/travel info" }
+        { "status": "🔄", "text": "Italy trip planning - spring 2026, $3.5-4.5k countryside experience" },
+        { "status": "🔄", "text": "Memorial Day weekend (May 23-26) timing exploration" }
       ],
-      "learned": "Jeremy's travel patterns (Tampa for Alex, Nebraska for parents)",
+      "learned": "Spring preferred over fall; 4-5 days countryside > big Rome experience",
       "blockers": []
     },
     {
-      "agent": "remy",
-      "emoji": "🍳",
-      "name": "Remy",
-      "role": "Food",
-      "items": [
-        { "status": "🔄", "text": "Seymour v2 Day 3 — monitoring" },
-        { "status": "✅", "text": "Tonight: Creamy Sausage Rigatoni" }
-      ],
-      "learned": null,
-      "blockers": []
-    },
-    {
-      "agent": "harper",
-      "emoji": "🔍",
-      "name": "Harper",
-      "role": "QA",
-      "items": [
-        { "status": "⚠️", "text": "Session timed out" }
-      ],
-      "learned": null,
-      "blockers": []
-    },
-    {
-      "agent": "lena",
-      "emoji": "💪",
-      "name": "Lena",
-      "role": "Fitness",
+      "agent": "nova",
+      "emoji": "🌟",
+      "name": "Nova",
+      "role": "HR",
       "items": [
         { "status": "⚠️", "text": "Session timed out" }
       ],
@@ -109,7 +130,11 @@
   "crossTeam": [
     {
       "agent": "Marcus + Harper",
-      "text": "PWA gotcha: Service workers cache aggressively — bump cache version + no-cache headers"
+      "text": "Mobile testing coordination - Harper reports bugs, Marcus fixes, but Harper needs device access for thorough QA"
+    },
+    {
+      "agent": "Remy + Lena",
+      "text": "Both successfully moved detailed formats out of MEMORY.md into their agent workspaces"
     }
   ]
 }

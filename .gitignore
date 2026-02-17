@@ -1,3 +1,8 @@
+# TLS certificates
+*.crt
+*.key
+*.pem
+
 # Sensitive data
 messages.json
 messages.json.bak
