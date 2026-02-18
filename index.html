@@ -3359,8 +3359,9 @@
     let voiceStream     = null;
     let voiceRecorder   = null;
     let voiceChunks     = [];
-    let audioCtx        = null;
-    let analyser        = null;
+    let audioCtx        = null;  // created once per session in startVoiceMode()
+    let audioSource     = null;  // MediaStreamAudioSourceNode — reused across cycles
+    let analyser        = null;  // AnalyserNode — reused across cycles
     let vadTimer        = null;
     let lastSoundTime   = 0;
     let hasSpeech       = false;
@@ -3409,6 +3410,14 @@
         toast.error('Microphone access denied. Check browser permissions.');
         return;
       }
+
+      // Create AudioContext ONCE per session — reused across all listen cycles
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      audioSource = audioCtx.createMediaStreamSource(voiceStream);
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 512;
+      audioSource.connect(analyser);
+
       voiceModeActive = true;
       toast.info('🎙️ Voice mode on — speak naturally. Press Escape to end.');
       startListening();
@@ -3419,35 +3428,31 @@
       stopListening();
       stopTTS();
       if (voiceStream) { voiceStream.getTracks().forEach(t => t.stop()); voiceStream = null; }
-      if (audioCtx) { audioCtx.close(); audioCtx = null; analyser = null; }
+      // Close AudioContext once — at session end only
+      if (audioCtx) { audioCtx.close(); audioCtx = null; audioSource = null; analyser = null; }
       setVoiceState('idle');
       toast.info('Voice mode off');
     }
 
     // --- VAD + Recording ---
     function startListening() {
-      if (!voiceModeActive || !voiceStream) return;
+      if (!voiceModeActive || !voiceStream || !analyser) return;
       setVoiceState('listening');
 
       voiceChunks = [];
       hasSpeech = false;
       lastSoundTime = Date.now();
 
-      // Set up AudioContext for VAD
-      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      const source = audioCtx.createMediaStreamSource(voiceStream);
-      analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 512;
-      source.connect(analyser);
+      // dataArray reused from the single persistent analyser
       const dataArray = new Uint8Array(analyser.frequencyBinCount);
 
-      // Start MediaRecorder
+      // Start MediaRecorder (new recorder per utterance — stream is reused)
       voiceRecorder = new MediaRecorder(voiceStream, { mimeType: 'audio/webm' });
       voiceRecorder.ondataavailable = e => { if (e.data.size > 0) voiceChunks.push(e.data); };
       voiceRecorder.onstop = () => processVoiceInput();
       voiceRecorder.start(100); // collect chunks every 100ms
 
-      // VAD loop
+      // VAD loop — reads from the persistent analyser, no new AudioContext
       vadTimer = setInterval(() => {
         if (!voiceModeActive) { clearInterval(vadTimer); return; }
         analyser.getByteFrequencyData(dataArray);
@@ -3469,7 +3474,7 @@
       if (voiceRecorder && voiceRecorder.state !== 'inactive') {
         voiceRecorder.stop();
       }
-      if (audioCtx) { audioCtx.close(); audioCtx = null; analyser = null; }
+      // Do NOT close audioCtx here — it's reused across cycles, closed only in endVoiceMode()
     }
 
     async function processVoiceInput() {
