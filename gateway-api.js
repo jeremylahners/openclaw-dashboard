@@ -2,9 +2,32 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
+const { execFile, spawn } = require('child_process');
 const webpush = require('web-push');
 const { WebSocketServer, WebSocket } = require('ws');
 const chatDb = require('./db.js');
+
+// ============================================================
+// VOICE - Agent TTS voice mapping (macOS say voices)
+// ============================================================
+const AGENT_VOICES = {
+  isla:   'Samantha',           // female, warm
+  nova:   'Shelley (English (US))', // female, professional
+  lena:   'Flo (English (US))', // female, energetic
+  remy:   'Reed (English (US))', // male, friendly
+  marcus: 'Eddy (English (US))', // male, confident
+  harper: 'Sandy (English (US))', // female, precise
+  eli:    'Rocko (English (US))', // male, authoritative
+  sage:   'Grandma (English (US))', // female, thoughtful
+  julie:  'Flo (English (US))', // female, upbeat
+  val:    'Grandpa (English (US))', // male, measured
+  atlas:  'Reed (English (US))', // male, adventurous
+};
+const DEFAULT_VOICE = 'Samantha';
+const WHISPER_MODEL = '/Users/jeremylahners/.cache/whisper-cpp/models/ggml-base.en.bin';
+const WHISPER_BIN = '/opt/homebrew/bin/whisper-cli';
+const FFMPEG_BIN  = '/opt/homebrew/bin/ffmpeg';
 
 // Load configs
 const config = require('./config.js');
@@ -887,6 +910,164 @@ const server = http.createServer(async (req, res) => {
   // Gateway status
   else if (req.url === '/gateway/status' && req.method === 'GET') {
     res.end(JSON.stringify({ ok: true, connected: gwConnected }));
+  }
+
+  // ============================================================
+  // VOICE: Transcribe audio → text via Whisper
+  // POST /voice/transcribe  (multipart: field "audio", webm/ogg blob)
+  // ============================================================
+  else if (req.url === '/voice/transcribe' && req.method === 'POST') {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'voice-'));
+    const rawPath  = path.join(tmpDir, 'input.webm');
+    const wavPath  = path.join(tmpDir, 'input.wav');
+
+    const cleanup = () => {
+      try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+    };
+
+    try {
+      // Parse multipart manually — extract first file part
+      const chunks = [];
+      req.on('data', d => chunks.push(d));
+      await new Promise((resolve, reject) => {
+        req.on('end', resolve);
+        req.on('error', reject);
+      });
+
+      const body = Buffer.concat(chunks);
+      const contentType = req.headers['content-type'] || '';
+      const boundary = contentType.split('boundary=')[1]?.trim();
+
+      let audioData;
+      if (boundary) {
+        // Parse multipart/form-data
+        const boundaryBuf = Buffer.from(`--${boundary}`);
+        const parts = [];
+        let start = 0;
+        while (start < body.length) {
+          const idx = body.indexOf(boundaryBuf, start);
+          if (idx === -1) break;
+          const end = body.indexOf(boundaryBuf, idx + boundaryBuf.length);
+          if (end === -1) break;
+          parts.push(body.slice(idx + boundaryBuf.length, end));
+          start = end;
+        }
+        for (const part of parts) {
+          const headerEnd = part.indexOf('\r\n\r\n');
+          if (headerEnd === -1) continue;
+          const header = part.slice(0, headerEnd).toString();
+          if (header.includes('name="audio"') || header.includes('filename=')) {
+            audioData = part.slice(headerEnd + 4, part.length - 2); // trim trailing \r\n
+            break;
+          }
+        }
+      } else {
+        // Raw audio body (no multipart wrapper)
+        audioData = body;
+      }
+
+      if (!audioData || audioData.length < 100) {
+        cleanup();
+        res.statusCode = 400;
+        return res.end(JSON.stringify({ ok: false, error: 'No audio data received' }));
+      }
+
+      fs.writeFileSync(rawPath, audioData);
+
+      // Convert to wav (whisper needs wav)
+      await new Promise((resolve, reject) => {
+        execFile(FFMPEG_BIN, ['-i', rawPath, '-ar', '16000', '-ac', '1', wavPath, '-y'], (err, stdout, stderr) => {
+          if (err) reject(new Error(`ffmpeg: ${stderr || err.message}`));
+          else resolve();
+        });
+      });
+
+      // Transcribe with whisper-cli
+      const transcript = await new Promise((resolve, reject) => {
+        execFile(WHISPER_BIN, [
+          '-m', WHISPER_MODEL,
+          '--no-prints',
+          '-f', wavPath
+        ], { timeout: 30000 }, (err, stdout, stderr) => {
+          if (err) return reject(new Error(`whisper: ${stderr || err.message}`));
+          // Parse output: "[timestamp] text"
+          const text = stdout.replace(/\[\d{2}:\d{2}:\d{2}\.\d{3} --> \d{2}:\d{2}:\d{2}\.\d{3}\]\s*/g, '').trim();
+          resolve(text);
+        });
+      });
+
+      cleanup();
+      res.end(JSON.stringify({ ok: true, transcript }));
+
+    } catch (e) {
+      cleanup();
+      console.error('[Voice/Transcribe]', e.message);
+      res.statusCode = 500;
+      res.end(JSON.stringify({ ok: false, error: e.message }));
+    }
+    return;
+  }
+
+  // ============================================================
+  // VOICE: Text → speech via macOS say + ffmpeg
+  // GET /voice/speak?text=...&agent=...
+  // ============================================================
+  else if (req.url.startsWith('/voice/speak') && req.method === 'GET') {
+    const urlObj = new URL(req.url, 'http://localhost');
+    const text   = urlObj.searchParams.get('text') || '';
+    const agent  = urlObj.searchParams.get('agent') || '';
+    const voice  = AGENT_VOICES[agent] || DEFAULT_VOICE;
+
+    if (!text.trim()) {
+      res.statusCode = 400;
+      return res.end(JSON.stringify({ ok: false, error: 'text required' }));
+    }
+
+    const tmpDir  = fs.mkdtempSync(path.join(os.tmpdir(), 'tts-'));
+    const aiffPath = path.join(tmpDir, 'tts.aiff');
+    const mp3Path  = path.join(tmpDir, 'tts.mp3');
+
+    const cleanup = () => {
+      try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+    };
+
+    try {
+      // Generate speech with macOS say
+      await new Promise((resolve, reject) => {
+        execFile('say', ['-v', voice, '-o', aiffPath, text], { timeout: 15000 }, (err) => {
+          if (err) reject(new Error(`say: ${err.message}`));
+          else resolve();
+        });
+      });
+
+      // Convert aiff → mp3
+      await new Promise((resolve, reject) => {
+        execFile(FFMPEG_BIN, ['-i', aiffPath, '-acodec', 'libmp3lame', '-ab', '128k', mp3Path, '-y'],
+          { timeout: 15000 }, (err, stdout, stderr) => {
+            if (err) reject(new Error(`ffmpeg failed: ${err.message} | ${stderr}`));
+            else resolve();
+          });
+      });
+
+      const mp3 = fs.readFileSync(mp3Path);
+      cleanup();
+
+      // Override Content-Type for binary audio response
+      res.removeHeader('Content-Type');
+      res.setHeader('Content-Type', 'audio/mpeg');
+      res.setHeader('Content-Length', mp3.length);
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('X-Voice', voice);
+      res.statusCode = 200;
+      res.end(mp3);
+
+    } catch (e) {
+      cleanup();
+      console.error('[Voice/Speak]', e.message);
+      res.statusCode = 500;
+      res.end(JSON.stringify({ ok: false, error: e.message }));
+    }
+    return;
   }
 
   // Workspace config for frontend (agents, branding, owner — no secrets)

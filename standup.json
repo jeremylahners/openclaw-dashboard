@@ -1,55 +1,55 @@
 {
-  "date": "Tue, Feb 17",
-  "time": "4:20 PM",
-  "timestamp": 1771363232000,
+  "date": "Wed, Feb 18",
+  "time": "3:00 PM",
+  "timestamp": 1739912400000,
   "updates": [
     {
       "agent": "marcus",
       "emoji": "🔧",
       "name": "Marcus",
-      "role": "Dev",
+      "role": "Dev Manager",
       "items": [
-        { "status": "✅", "text": "Mobile tab switching bug (CSS breakpoint)" },
-        { "status": "✅", "text": "Agent alignment in office view" },
-        { "status": "✅", "text": "Message deduplication bug" },
-        { "status": "✅", "text": "Mobile keyboard dismissal improvements" },
-        { "status": "🔄", "text": "Available for next task" }
+        {"status": "✅", "text": "All dashboard UI work shipped & stable — mobile tab switching, agent alignment, message deduplication resolved"},
+        {"status": "✅", "text": "Docs written: MOBILE_TESTING.md, DEVELOPMENT.md"},
+        {"status": "⏳", "text": "Holding pattern — no new tasks assigned"}
       ],
-      "learned": "Mobile testing workflow - Chrome DevTools catches 90% of bugs before deploying",
-      "blockers": []
+      "learned": "Nothing new today.",
+      "blockers": [],
+      "onDeck": ["Capacitor iOS native push (blocked on Apple Developer setup)", "Agent-to-agent message visibility solution", "MHC caregiver architecture (waiting on Jeremy's decision)"]
     },
     {
       "agent": "harper",
-      "emoji": "🔍",
+      "emoji": "🧪",
       "name": "Harper",
-      "role": "QA",
+      "role": "QA Manager",
       "items": [
-        { "status": "🔄", "text": "QA testing for Office Dashboard mobile view" },
-        { "status": "⏳", "text": "Waiting on mobile device testing - can't verify keyboard dismissal on real hardware" }
+        {"status": "🔄", "text": "Continuing QA on Office Dashboard"},
+        {"status": "⏳", "text": "Marcus's mobile keyboard fix (commit a51fc07) pending real-device confirmation from Jeremy"}
       ],
-      "learned": "Stay in my lane: report bugs to Marcus, don't fix them myself",
-      "blockers": ["No access to mobile devices for hands-on testing"]
+      "learned": "Role clarity: find bugs → report to Marcus → wait → test his fix. Code review ≠ real device testing.",
+      "blockers": ["No mobile device access for hands-on testing of mobile-specific bugs"]
     },
     {
       "agent": "eli",
       "emoji": "🏗️",
       "name": "Eli",
-      "role": "Architect",
+      "role": "Chief Architect",
       "items": [
-        { "status": "⚠️", "text": "Session timed out" }
+        {"status": "⏳", "text": "On standby — no new tasks since sports betting project docs on Saturday"}
       ],
-      "learned": null,
-      "blockers": []
+      "learned": "Nothing new today.",
+      "blockers": [],
+      "onDeck": ["Phase 1 data collection for sports betting project when ready"]
     },
     {
       "agent": "sage",
-      "emoji": "🔭",
+      "emoji": "🔬",
       "name": "Sage",
-      "role": "Research",
+      "role": "Researcher",
       "items": [
-        { "status": "🔄", "text": "No active research tasks - ready for assignments" }
+        {"status": "⏳", "text": "No active research tasks — available for assignments"}
       ],
-      "learned": null,
+      "learned": "Nothing new today.",
       "blockers": []
     },
     {
@@ -58,39 +58,35 @@
       "name": "Julie",
       "role": "Marketing",
       "items": [
-        { "status": "✅", "text": "Sports betting presentation complete (23→30 slides with technical depth)" },
-        { "status": "🔄", "text": "On standby, no active tasks" }
+        {"status": "⏳", "text": "On standby since wrapping sports betting presentation on Saturday"}
       ],
-      "learned": "presentations skill + Marp CLI works well for technical decks",
+      "learned": "Nothing new since Saturday's deck work.",
       "blockers": []
     },
     {
       "agent": "remy",
-      "emoji": "🍳",
+      "emoji": "👨‍🍳",
       "name": "Remy",
-      "role": "Food",
+      "role": "Chef",
       "items": [
-        { "status": "✅", "text": "Fixed Dinner Plan dates (off by a day)" },
-        { "status": "✅", "text": "Created 3 full recipes (Tomato Bisque, Shrimp Risotto, Chicken Alfredo)" },
-        { "status": "✅", "text": "Grocery list added to Apple Reminders" },
-        { "status": "✅", "text": "Updated recipes.md (quick reference only)" },
-        { "status": "🔄", "text": "Seymour Day 6 - showing hooch, bubbles, trending right" }
+        {"status": "✅", "text": "Seymour (sourdough starter) Day 7 — hooch + bubbles, sour smell, decent rise. Fixed plate cover → loose kitchen towel for proper gas exchange"},
+        {"status": "✅", "text": "Tomato Bisque + Grilled Cheese executed yesterday"},
+        {"status": "🔄", "text": "Shrimp + Risotto + Honey-Glazed Carrots cooking tonight; Alfredo tomorrow"}
       ],
-      "learned": "Apple Notes recipes must use HTML formatting; recipes.md is index only",
+      "learned": "Starter covers must be loose (towel, not sealed plate) for proper CO2 escape. Seymour trending toward consistency by days 8-9.",
       "blockers": []
     },
     {
       "agent": "lena",
       "emoji": "💪",
       "name": "Lena",
-      "role": "Fitness",
+      "role": "Gym Coach",
       "items": [
-        { "status": "✅", "text": "Rebuilt workout cron - dynamic 'next up' rotation instead of fixed days" },
-        { "status": "✅", "text": "Updated MEMORY.md with proper Push/Pull/Lower cycle" },
-        { "status": "⚠️", "text": "Need clarity on emoji usage in workout plans" }
+        {"status": "✅", "text": "7am cron generated today's Cardio + McGill Big 3 workout note"},
+        {"status": "📊", "text": "Yesterday's full Pull session logged — first complete 5-exercise Pull using proper template"}
       ],
-      "learned": "Dynamic rotation handles real life (travel, sick days) better than rigid schedules",
-      "blockers": ["Minor: unclear on emoji expectations for workout notes"]
+      "learned": "Lat Pulldown has some detraining since Oct — 85 lb rebuild weight (not 100). Bicep curl needs consistent implement. Face Pull at 35 lb trending up.",
+      "blockers": []
     },
     {
       "agent": "val",
@@ -98,43 +94,51 @@
       "name": "Val",
       "role": "Finance",
       "items": [
-        { "status": "🔄", "text": "No active projects - available for tasks" }
+        {"status": "⏳", "text": "No active projects in flight — available"}
       ],
-      "learned": null,
-      "blockers": []
+      "learned": "Nothing new today.",
+      "blockers": [],
+      "onDeck": ["MHC caregiver feature (waiting on Wilber's backend review)", "Dashboard chart support unused — savings projections, weight tracking, spending breakdowns", "Bonus ~$18,400 take-home expected in next 1-2 weeks"]
+    },
+    {
+      "agent": "dash",
+      "emoji": "📊",
+      "name": "Dash",
+      "role": "Dashboard Dev",
+      "items": [
+        {"status": "✅", "text": "Fixed chat input box height on reload and service worker blocking Files panel API calls — both shipped Saturday"},
+        {"status": "⏳", "text": "No specific tasks queued — reactive/waiting on direction"}
+      ],
+      "learned": "Service workers silently swallowing API errors are tricky — SW was killing every request to localhost:8081 while backend looked fine.",
+      "blockers": ["Running without proper memory setup — no memory/ dir, BOOTSTRAP.md still present, USER.md and IDENTITY.md are blank templates"]
     },
     {
       "agent": "atlas",
-      "emoji": "🗺️",
+      "emoji": "✈️",
       "name": "Atlas",
       "role": "Travel",
       "items": [
-        { "status": "🔄", "text": "Italy trip planning - spring 2026, $3.5-4.5k countryside experience" },
-        { "status": "🔄", "text": "Memorial Day weekend (May 23-26) timing exploration" }
+        {"status": "❌", "text": "Unavailable — session timed out"}
       ],
-      "learned": "Spring preferred over fall; 4-5 days countryside > big Rome experience",
-      "blockers": []
+      "learned": "N/A",
+      "blockers": ["Session timeout"]
     },
     {
       "agent": "nova",
-      "emoji": "🌟",
+      "emoji": "👥",
       "name": "Nova",
       "role": "HR",
       "items": [
-        { "status": "⚠️", "text": "Session timed out" }
+        {"status": "❌", "text": "Unavailable — session timed out"}
       ],
-      "learned": null,
-      "blockers": []
+      "learned": "N/A",
+      "blockers": ["Session timeout"]
     }
   ],
   "crossTeam": [
-    {
-      "agent": "Marcus + Harper",
-      "text": "Mobile testing coordination - Harper reports bugs, Marcus fixes, but Harper needs device access for thorough QA"
-    },
-    {
-      "agent": "Remy + Lena",
-      "text": "Both successfully moved detailed formats out of MEMORY.md into their agent workspaces"
-    }
+    {"agent": "Remy", "text": "Sourdough starter covers must be loose for CO2 escape — applies to any fermentation project"},
+    {"agent": "Dash", "text": "Service workers can silently kill API calls even when backend is healthy — good debugging pattern for the whole dev team"},
+    {"agent": "Lena", "text": "Detraining is real after a training gap — gradual rebuild is smarter than jumping back to old weights"},
+    {"agent": "Val", "text": "Jeremy's bonus (~$18,400) expected in 1-2 weeks — worth coordinating with any pending financial decisions"}
   ]
 }
