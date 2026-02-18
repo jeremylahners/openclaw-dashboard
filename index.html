@@ -139,8 +139,8 @@
         <div class="chat-header-bar" style="padding: 8px 15px; border-bottom: 1px solid #333; display: flex; justify-content: space-between; align-items: center;">
           <span style="font-size: 0.85rem; color: #888;" id="chatChannelName">#hq</span>
           <div style="display: flex; align-items: center; gap: 8px;">
-            <button id="voiceToggleBtn" title="Toggle voice mode" style="background: none; border: none; cursor: pointer; font-size: 1rem; opacity: 0.5; padding: 2px 4px; border-radius: 4px; transition: opacity 0.2s;">🔊</button>
-            <button id="convoModeBtn" title="Conversation mode (hands-free)" style="background: none; border: none; cursor: pointer; font-size: 0.8rem; opacity: 0.5; padding: 2px 6px; border-radius: 4px; color: #888; transition: all 0.2s; white-space: nowrap;">🎙️ Convo</button>
+            <button id="voiceModeBtn" title="Voice conversation mode">🎙️ Talk</button>
+            <span id="voiceStatusLabel" style="font-size: 0.75rem; color: #888; display: none;"></span>
             <span id="wsStatus" style="font-size: 0.7rem; color: #555;">Connecting...</span>
           </div>
         </div>
@@ -148,7 +148,6 @@
           <div class="chat-loading" style="text-align: center; color: #666; padding: 20px;">Loading messages...</div>
         </div>
         <div class="chat-input-container" style="padding: 10px 15px; border-top: 1px solid #333; display: flex; gap: 10px; align-items: flex-end;">
-          <button id="micBtn" title="Hold to record (or click to toggle)" style="background: #2a2a2a; border: 1px solid #444; border-radius: 8px; padding: 10px 12px; color: #888; cursor: pointer; font-size: 1.1rem; flex-shrink: 0; transition: all 0.2s; min-height: 40px;">🎤</button>
           <textarea id="chatInput" placeholder="Type a message..." style="flex: 1; background: #2a2a2a; border: 1px solid #444; border-radius: 8px; padding: 10px 15px; color: #fff; font-size: 0.9rem; resize: none; min-height: 40px; max-height: 200px; overflow-y: auto; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.4;" rows="1"></textarea>
           <button id="chatSend" style="background: #5865F2; border: none; border-radius: 8px; padding: 10px 20px; color: white; cursor: pointer; font-weight: 500; flex-shrink: 0;">Send</button>
         </div>
@@ -2247,10 +2246,10 @@
       chatMessages.appendChild(createMessageEl(message));
       setTimeout(() => renderPendingCharts(), 50);
 
-      // Auto-play TTS for new bot messages
+      // Auto-play TTS for new bot messages (voice conversation mode)
       if (message.isBot && !message._optimistic) {
-        if (typeof speakText === 'function' && typeof voiceEnabled !== 'undefined' && voiceEnabled) {
-          speakText(message.content || '', currentAgentKey || 'isla');
+        if (typeof speakResponse === 'function' && typeof voiceModeActive !== 'undefined' && voiceModeActive) {
+          speakResponse(message.content || '', currentAgentKey || 'isla');
         }
       }
     }
@@ -3349,267 +3348,248 @@
     renderAgentToggles();
 
     // ============================================================
-    // VOICE I/O — STT (Whisper) + TTS (macOS say) + Convo Mode
+    // VOICE I/O — True conversation mode with VAD
     // ============================================================
 
+    const SILENCE_THRESHOLD = 8;   // avg frequency amplitude (0-255) below which = silence
+    const SILENCE_DURATION  = 1500; // ms of silence before end-of-utterance
+
     // --- State ---
-    let voiceEnabled     = JSON.parse(localStorage.getItem('voiceEnabled') ?? 'false');
-    let convoModeActive  = false;
-    let mediaRecorder    = null;
-    let audioChunks      = [];
-    let isRecording      = false;
-    let currentAudio     = null; // currently playing Audio object
-    let ttsQueue         = [];   // pending TTS items
-    let ttsPlaying       = false;
+    let voiceModeActive = false;
+    let voiceStream     = null;
+    let voiceRecorder   = null;
+    let voiceChunks     = [];
+    let audioCtx        = null;
+    let analyser        = null;
+    let vadTimer        = null;
+    let lastSoundTime   = 0;
+    let hasSpeech       = false;
+    let currentAudio    = null;
+    let voiceState      = 'idle'; // idle | listening | processing | speaking
 
     // --- DOM refs ---
-    const micBtn       = document.getElementById('micBtn');
-    const voiceToggle  = document.getElementById('voiceToggleBtn');
-    const convoBtn     = document.getElementById('convoModeBtn');
-    const tabChat      = document.getElementById('tab-chat');
+    const voiceModeBtn   = document.getElementById('voiceModeBtn');
+    const voiceStatusLbl = document.getElementById('voiceStatusLabel');
+    const tabChatEl      = document.getElementById('tab-chat');
 
-    // --- Sync UI to state ---
-    function updateVoiceUI() {
-      if (!voiceToggle) return;
-      voiceToggle.classList.toggle('active', voiceEnabled);
-      voiceToggle.title = voiceEnabled ? 'Voice ON — click to disable' : 'Voice OFF — click to enable';
-      if (!voiceEnabled && convoModeActive) endConvoMode();
-    }
-
-    function updateConvoUI() {
-      if (!convoBtn) return;
-      convoBtn.classList.toggle('active', convoModeActive);
-      tabChat?.classList.toggle('convo-active', convoModeActive);
-      convoBtn.title = convoModeActive ? 'Conversation mode ON — click to end' : 'Conversation mode OFF';
-    }
-
-    // --- Voice toggle ---
-    voiceToggle?.addEventListener('click', () => {
-      voiceEnabled = !voiceEnabled;
-      localStorage.setItem('voiceEnabled', JSON.stringify(voiceEnabled));
-      updateVoiceUI();
-      toast.info(voiceEnabled ? '🔊 Voice enabled — agent responses will be read aloud' : '🔇 Voice disabled');
-    });
-
-    // --- Conversation mode ---
-    function startConvoMode() {
-      if (!voiceEnabled) {
-        voiceEnabled = true;
-        localStorage.setItem('voiceEnabled', JSON.stringify(true));
-        updateVoiceUI();
+    function setVoiceState(state) {
+      voiceState = state;
+      if (!voiceModeBtn) return;
+      const labels = {
+        idle:       { btn: '🎙️ Talk', lbl: '',                   active: false },
+        listening:  { btn: '🔴 End',  lbl: '🎤 Listening...',    active: true  },
+        processing: { btn: '🔴 End',  lbl: '⏳ Thinking...',     active: true  },
+        speaking:   { btn: '🔴 End',  lbl: '🔊 Speaking...',     active: true  },
+      };
+      const { btn, lbl, active } = labels[state] || labels.idle;
+      voiceModeBtn.textContent = btn;
+      voiceModeBtn.classList.toggle('voice-active', active);
+      tabChatEl?.classList.toggle('voice-active', active);
+      if (voiceStatusLbl) {
+        voiceStatusLbl.textContent = lbl;
+        voiceStatusLbl.style.display = lbl ? 'inline' : 'none';
       }
-      convoModeActive = true;
-      updateConvoUI();
-      toast.info('🎙️ Conversation mode — speak after each response. Press Escape to end.');
-      startRecording();
     }
 
-    function endConvoMode() {
-      convoModeActive = false;
-      updateConvoUI();
-      stopRecording();
-      stopTTS();
-      toast.info('Conversation mode ended');
-    }
-
-    convoBtn?.addEventListener('click', () => {
-      if (convoModeActive) endConvoMode();
-      else startConvoMode();
+    // --- Talk button ---
+    voiceModeBtn?.addEventListener('click', () => {
+      if (voiceModeActive) endVoiceMode();
+      else startVoiceMode();
     });
 
-    // ESC to end convo mode
     document.addEventListener('keydown', e => {
-      if (e.key === 'Escape' && convoModeActive) endConvoMode();
+      if (e.key === 'Escape' && voiceModeActive) endVoiceMode();
     });
 
-    // --- Mic button (click to toggle recording) ---
-    micBtn?.addEventListener('click', async () => {
-      if (isRecording) {
-        stopRecording();
-      } else {
-        await startRecording();
-      }
-    });
-
-    async function startRecording() {
-      if (isRecording) return;
+    async function startVoiceMode() {
+      if (voiceModeActive) return;
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        audioChunks = [];
-        mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
-
-        mediaRecorder.ondataavailable = e => {
-          if (e.data.size > 0) audioChunks.push(e.data);
-        };
-
-        mediaRecorder.onstop = async () => {
-          stream.getTracks().forEach(t => t.stop());
-          await transcribeAudio();
-        };
-
-        mediaRecorder.start();
-        isRecording = true;
-        micBtn.classList.add('recording');
-        micBtn.textContent = '⏹️';
-        micBtn.title = 'Click to stop recording';
-
+        voiceStream = await navigator.mediaDevices.getUserMedia({ audio: true });
       } catch (e) {
-        console.error('[Voice] Mic error:', e.message);
         toast.error('Microphone access denied. Check browser permissions.');
+        return;
       }
+      voiceModeActive = true;
+      toast.info('🎙️ Voice mode on — speak naturally. Press Escape to end.');
+      startListening();
     }
 
-    function stopRecording() {
-      if (!isRecording || !mediaRecorder) return;
-      mediaRecorder.stop();
-      isRecording = false;
-      micBtn.classList.remove('recording');
-      micBtn.classList.add('transcribing');
-      micBtn.textContent = '⌛';
-      micBtn.title = 'Transcribing...';
+    function endVoiceMode() {
+      voiceModeActive = false;
+      stopListening();
+      stopTTS();
+      if (voiceStream) { voiceStream.getTracks().forEach(t => t.stop()); voiceStream = null; }
+      if (audioCtx) { audioCtx.close(); audioCtx = null; analyser = null; }
+      setVoiceState('idle');
+      toast.info('Voice mode off');
     }
 
-    async function transcribeAudio() {
-      if (audioChunks.length === 0) {
-        resetMicBtn();
+    // --- VAD + Recording ---
+    function startListening() {
+      if (!voiceModeActive || !voiceStream) return;
+      setVoiceState('listening');
+
+      voiceChunks = [];
+      hasSpeech = false;
+      lastSoundTime = Date.now();
+
+      // Set up AudioContext for VAD
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const source = audioCtx.createMediaStreamSource(voiceStream);
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 512;
+      source.connect(analyser);
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+      // Start MediaRecorder
+      voiceRecorder = new MediaRecorder(voiceStream, { mimeType: 'audio/webm' });
+      voiceRecorder.ondataavailable = e => { if (e.data.size > 0) voiceChunks.push(e.data); };
+      voiceRecorder.onstop = () => processVoiceInput();
+      voiceRecorder.start(100); // collect chunks every 100ms
+
+      // VAD loop
+      vadTimer = setInterval(() => {
+        if (!voiceModeActive) { clearInterval(vadTimer); return; }
+        analyser.getByteFrequencyData(dataArray);
+        const volume = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
+
+        if (volume > SILENCE_THRESHOLD) {
+          hasSpeech = true;
+          lastSoundTime = Date.now();
+        } else if (hasSpeech && (Date.now() - lastSoundTime) > SILENCE_DURATION) {
+          // End of utterance detected
+          clearInterval(vadTimer);
+          voiceRecorder.stop();
+        }
+      }, 100);
+    }
+
+    function stopListening() {
+      clearInterval(vadTimer);
+      if (voiceRecorder && voiceRecorder.state !== 'inactive') {
+        voiceRecorder.stop();
+      }
+      if (audioCtx) { audioCtx.close(); audioCtx = null; analyser = null; }
+    }
+
+    async function processVoiceInput() {
+      if (!voiceChunks.length || !hasSpeech) {
+        // No speech detected — restart listening
+        if (voiceModeActive) setTimeout(() => startListening(), 300);
         return;
       }
 
-      try {
-        const blob = new Blob(audioChunks, { type: 'audio/webm' });
-        const formData = new FormData();
-        formData.append('audio', blob, 'recording.webm');
+      setVoiceState('processing');
 
-        const resp = await fetch('/api/voice/transcribe', {
-          method: 'POST',
-          body: formData
-        });
+      try {
+        const blob = new Blob(voiceChunks, { type: 'audio/webm' });
+        const formData = new FormData();
+        formData.append('audio', blob, 'utterance.webm');
+
+        const resp = await fetch('/api/voice/transcribe', { method: 'POST', body: formData });
         const data = await resp.json();
 
-        if (data.ok && data.transcript?.trim()) {
-          const input = document.getElementById('chatInput');
-          if (input) {
-            input.value = data.transcript.trim();
-            input.dispatchEvent(new Event('input')); // trigger auto-resize
-          }
-          resetMicBtn();
-          // Auto-submit in convo mode
-          if (convoModeActive) {
-            setTimeout(() => sendMessage(), 300);
-          }
-        } else {
-          toast.warning('No speech detected — try again');
-          resetMicBtn();
+        if (!data.ok || !data.transcript?.trim()) {
+          console.log('[Voice] No transcript — restarting listen');
+          if (voiceModeActive) setTimeout(() => startListening(), 300);
+          return;
         }
+
+        console.log('[Voice] Transcript:', data.transcript);
+
+        // Auto-submit directly (no text box fill)
+        await sendMessageText(data.transcript.trim());
+
       } catch (e) {
         console.error('[Voice] Transcribe error:', e.message);
-        toast.error('Transcription failed');
-        resetMicBtn();
+        if (voiceModeActive) setTimeout(() => startListening(), 1000);
       }
     }
 
-    function resetMicBtn() {
-      if (!micBtn) return;
-      micBtn.classList.remove('recording', 'transcribing');
-      micBtn.textContent = '🎤';
-      micBtn.title = 'Click to record voice message';
-    }
+    // Send a message by text directly (used by voice — bypasses input field)
+    async function sendMessageText(text) {
+      if (!text || !currentAgentKey) return;
 
-    // --- TTS playback ---
-    function speakText(text, agentKey) {
-      if (!voiceEnabled) return;
-      const clean = stripMarkdownForTTS(text);
-      if (!clean.trim()) return;
-      ttsQueue.push({ text: clean, agentKey });
-      if (!ttsPlaying) processTTSQueue();
-    }
-
-    async function processTTSQueue() {
-      if (ttsQueue.length === 0) {
-        ttsPlaying = false;
-        // In convo mode, auto-activate mic after TTS finishes
-        if (convoModeActive && !isRecording) {
-          setTimeout(() => startRecording(), 500);
-        }
-        return;
-      }
-      ttsPlaying = true;
-      const { text, agentKey } = ttsQueue.shift();
+      const now = Date.now();
+      const optimisticMsg = {
+        seq: now, agent: currentAgentKey, content: text, isBot: false,
+        author: 'Jeremy', authorId: 'user', timestamp: now,
+        timestampFormatted: new Date(now).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+        _optimistic: true
+      };
+      if (!messageCache.has(currentAgentKey)) messageCache.set(currentAgentKey, []);
+      messageCache.get(currentAgentKey).push(optimisticMsg);
+      appendMessageEl(optimisticMsg);
+      autoScroll(true);
 
       try {
-        const url = `/api/voice/speak?agent=${encodeURIComponent(agentKey)}&text=${encodeURIComponent(text.substring(0, 500))}`;
-        currentAudio = new Audio(url);
-        currentAudio.onended = () => {
-          currentAudio = null;
-          processTTSQueue();
-        };
-        currentAudio.onerror = () => {
-          console.error('[TTS] Playback error');
-          currentAudio = null;
-          processTTSQueue();
-        };
-        await currentAudio.play();
+        await fetch(`${API_BASE}/chat/${currentAgentKey}/send`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: text })
+        });
       } catch (e) {
+        console.error('[Voice] Send failed:', e.message);
+      }
+      // Response arrives via WebSocket → appendMessageEl → speakResponse()
+    }
+
+    // --- TTS ---
+    function speakResponse(text, agentKey) {
+      if (!voiceModeActive) return;
+      stopTTS(); // barge-in: stop any current audio
+      const clean = stripMarkdownForTTS(text);
+      if (!clean.trim()) {
+        if (voiceModeActive) setTimeout(() => startListening(), 300);
+        return;
+      }
+      setVoiceState('speaking');
+      const url = `/api/voice/speak?agent=${encodeURIComponent(agentKey)}&text=${encodeURIComponent(clean.substring(0, 500))}`;
+      currentAudio = new Audio(url);
+      currentAudio.onended  = () => { currentAudio = null; if (voiceModeActive) setTimeout(() => startListening(), 400); };
+      currentAudio.onerror  = () => { currentAudio = null; if (voiceModeActive) setTimeout(() => startListening(), 400); };
+      currentAudio.play().catch(e => {
         console.error('[TTS] Play failed:', e.message);
         currentAudio = null;
-        processTTSQueue();
-      }
+        if (voiceModeActive) setTimeout(() => startListening(), 400);
+      });
     }
 
     function stopTTS() {
-      ttsQueue = [];
-      if (currentAudio) {
-        currentAudio.pause();
-        currentAudio = null;
-      }
-      ttsPlaying = false;
+      if (currentAudio) { currentAudio.pause(); currentAudio = null; }
     }
 
-    // Strip markdown to plain text for TTS
-    function stripMarkdownForTTS(text) {
-      return text
-        .replace(/```[\s\S]*?```/g, 'code block')  // code blocks
-        .replace(/`[^`]+`/g, '')                    // inline code
-        .replace(/#{1,6}\s/g, '')                   // headings
-        .replace(/\*\*([^*]+)\*\*/g, '$1')          // bold
-        .replace(/\*([^*]+)\*/g, '$1')              // italic
-        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')    // links
-        .replace(/^[-*+]\s/gm, '')                  // bullets
-        .replace(/^\d+\.\s/gm, '')                  // numbered lists
-        .replace(/^>\s/gm, '')                      // blockquotes
-        .replace(/\n{2,}/g, '. ')                   // paragraph breaks
-        .replace(/\n/g, ' ')
-        .trim();
-    }
-
-    // Replay TTS for a specific message
+    // Replay button handler (always available, not just in voice mode)
     function replayTTS(btn, text) {
       stopTTS();
-      const agentKey = currentAgentKey || 'isla';
       const clean = stripMarkdownForTTS(text);
       if (!clean.trim()) return;
-
       btn.classList.add('playing');
-      const url = `/api/voice/speak?agent=${encodeURIComponent(agentKey)}&text=${encodeURIComponent(clean.substring(0, 500))}`;
+      const url = `/api/voice/speak?agent=${encodeURIComponent(currentAgentKey || 'isla')}&text=${encodeURIComponent(clean.substring(0, 500))}`;
       const audio = new Audio(url);
       audio.onended = () => btn.classList.remove('playing');
       audio.onerror = () => btn.classList.remove('playing');
       audio.play().catch(() => btn.classList.remove('playing'));
     }
 
-    // Hook into handleNewMessage to auto-play TTS for agent responses
-    const _origHandleNewMessage = handleNewMessage;
-    // Instead of monkey-patching, we hook into appendMessageEl
-    const _origAppendMessageEl = appendMessageEl;
-    window._voiceHookAppend = function(m) {
-      if (m.isBot && voiceEnabled && !m._optimistic) {
-        speakText(m.content || '', currentAgentKey || 'isla');
-      }
-    };
+    function stripMarkdownForTTS(text) {
+      return text
+        .replace(/```[\s\S]*?```/g, 'code block')
+        .replace(/`[^`]+`/g, '')
+        .replace(/#{1,6}\s/g, '')
+        .replace(/\*\*([^*]+)\*\*/g, '$1')
+        .replace(/\*([^*]+)\*/g, '$1')
+        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+        .replace(/^[-*+]\s/gm, '')
+        .replace(/^\d+\.\s/gm, '')
+        .replace(/^>\s/gm, '')
+        .replace(/\n{2,}/g, '. ')
+        .replace(/\n/g, ' ')
+        .trim();
+    }
 
-    // Initialize voice UI
-    updateVoiceUI();
-    updateConvoUI();
+    // Initialize
+    setVoiceState('idle');
 
   </script>
 </body>

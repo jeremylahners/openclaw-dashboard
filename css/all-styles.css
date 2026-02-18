@@ -2125,54 +2125,39 @@
    VOICE UI
    ============================================================ */
 
-/* Mic button states */
-#micBtn {
-  position: relative;
+/* Talk button in chat header */
+#voiceModeBtn {
+  background: none;
+  border: 1px solid #444;
+  border-radius: 6px;
+  color: #888;
+  cursor: pointer;
+  font-size: 0.8rem;
+  padding: 3px 8px;
   transition: all 0.2s;
+  white-space: nowrap;
 }
 
-#micBtn.recording {
-  background: #7f1d1d !important;
-  border-color: #ef4444 !important;
-  color: #ef4444 !important;
-  animation: mic-pulse 1s ease-in-out infinite;
+#voiceModeBtn:hover {
+  border-color: #666;
+  color: #ccc;
 }
 
-#micBtn.transcribing {
-  background: #1e3a5f !important;
-  border-color: #3b82f6 !important;
-  color: #3b82f6 !important;
-  opacity: 0.8;
+#voiceModeBtn.voice-active {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: #ef4444;
+  color: #ef4444;
+  animation: voice-btn-pulse 2s ease-in-out infinite;
 }
 
-@keyframes mic-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
-  50%       { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
+@keyframes voice-btn-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.3); }
+  50%       { box-shadow: 0 0 0 4px rgba(239, 68, 68, 0); }
 }
 
-/* Voice toggle button active state */
-#voiceToggleBtn.active {
-  opacity: 1 !important;
-  color: #22c55e;
-}
-
-/* Conversation mode button active state */
-#convoModeBtn.active {
-  opacity: 1 !important;
-  color: #f59e0b !important;
-  background: rgba(245, 158, 11, 0.15) !important;
-  border: 1px solid rgba(245, 158, 11, 0.3);
-  animation: convo-pulse 2s ease-in-out infinite;
-}
-
-@keyframes convo-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.3); }
-  50%       { box-shadow: 0 0 0 4px rgba(245, 158, 11, 0); }
-}
-
-/* Conversation mode — pulsing border on the whole chat panel */
-#tab-chat.convo-active {
-  outline: 2px solid rgba(245, 158, 11, 0.5);
+/* Chat panel voice-active border */
+#tab-chat.voice-active {
+  outline: 2px solid rgba(239, 68, 68, 0.35);
   outline-offset: -2px;
 }
 
@@ -2196,7 +2181,7 @@
 }
 
 .bubble-replay.playing {
-  opacity: 1;
+  opacity: 1 !important;
   color: #22c55e;
   animation: speaker-pulse 0.8s ease-in-out infinite;
 }

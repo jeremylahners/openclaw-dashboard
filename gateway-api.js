@@ -12,17 +12,17 @@ const chatDb = require('./db.js');
 // VOICE - Agent TTS voice mapping (macOS say voices)
 // ============================================================
 const AGENT_VOICES = {
-  isla:   'Samantha',           // female, warm
+  isla:   'Samantha',               // female, warm
   nova:   'Shelley (English (US))', // female, professional
-  lena:   'Flo (English (US))', // female, energetic
-  remy:   'Reed (English (US))', // male, friendly
-  marcus: 'Eddy (English (US))', // male, confident
-  harper: 'Sandy (English (US))', // female, precise
-  eli:    'Rocko (English (US))', // male, authoritative
-  sage:   'Grandma (English (US))', // female, thoughtful
-  julie:  'Flo (English (US))', // female, upbeat
-  val:    'Grandpa (English (US))', // male, measured
-  atlas:  'Reed (English (US))', // male, adventurous
+  lena:   'Flo (English (US))',     // female, energetic
+  remy:   'Reed (English (US))',    // male, friendly
+  marcus: 'Eddy (English (US))',    // male, confident
+  harper: 'Sandy (English (US))',   // female, precise
+  eli:    'Rocko (English (US))',   // male, authoritative
+  sage:   'Shelley (English (US))', // female, thoughtful (reuse Shelley)
+  julie:  'Flo (English (US))',     // female, upbeat
+  val:    'Fred',                   // male, measured
+  atlas:  'Reed (English (US))',    // male, adventurous
 };
 const DEFAULT_VOICE = 'Samantha';
 const WHISPER_MODEL = '/Users/jeremylahners/.cache/whisper-cpp/models/ggml-base.en.bin';
