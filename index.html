@@ -3369,6 +3369,16 @@
     let voiceRecorder   = null;
     let voiceChunks     = [];
     let audioCtx        = null;  // created once per session in startVoiceMode()
+    let wakeLock        = null;  // Screen Wake Lock — held during voice session
+
+    // Re-acquire wake lock if iOS releases it when app goes to background
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && voiceModeActive && 'wakeLock' in navigator) {
+        navigator.wakeLock.request('screen')
+          .then(wl => { wakeLock = wl; })
+          .catch(() => {});
+      }
+    });
     let audioSource     = null;  // MediaStreamAudioSourceNode — reused across cycles
     let analyser        = null;  // AnalyserNode — reused across cycles
     let vadTimer        = null;
@@ -3438,6 +3448,14 @@
       audioSource.connect(analyser);
 
       voiceModeActive = true;
+
+      // Request screen wake lock so phone screen stays on during voice session
+      if ('wakeLock' in navigator) {
+        navigator.wakeLock.request('screen')
+          .then(wl => { wakeLock = wl; })
+          .catch(() => {}); // Silently ignore if wake lock unavailable
+      }
+
       toast.info('🎙️ Voice mode on — speak naturally. Press Escape to end.');
       startListening();
     }
@@ -3449,6 +3467,8 @@
       if (voiceStream) { voiceStream.getTracks().forEach(t => t.stop()); voiceStream = null; }
       // Close AudioContext once — at session end only
       if (audioCtx) { audioCtx.close(); audioCtx = null; audioSource = null; analyser = null; }
+        // Release screen wake lock
+      if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
       setVoiceState('idle');
       toast.info('Voice mode off');
     }
@@ -3577,11 +3597,31 @@
     }
 
     // Extract complete sentences from text, returning an array.
-    // A sentence ends with . ! ? followed by whitespace or end-of-string.
-    // Handles abbreviations crudely (Mr. Mrs. Dr. etc.) by requiring ≥2 chars before punctuation.
+    // A period is only treated as a sentence boundary when the word immediately
+    // before it is 5+ characters long — abbreviations (Dr., Mr., U.S., etc.)
+    // are almost always ≤4 chars, so this avoids splitting on them.
+    // ! and ? are always treated as sentence boundaries.
+    // Only splits when followed by a capital letter or end-of-string.
     function extractSentences(text) {
-      const re = /[^.!?]{2,}[.!?]+(?:\s+|$)/g;
-      return text.match(re) || [];
+      // Find boundary positions: end-of-sentence punctuation + position after it
+      const re = /(?:[A-Za-z]{5,}|[^A-Za-z\s])[.]\s+(?=[A-Z])|[!?]+\s+(?=[A-Z])|(?:[A-Za-z]{5,}|[^A-Za-z\s])[.]\s*$|[!?]+\s*$/g;
+      const boundaries = [];
+      let m;
+      while ((m = re.exec(text)) !== null) {
+        boundaries.push(m.index + m[0].trimEnd().length);
+      }
+      if (!boundaries.length) return [];
+      const sentences = [];
+      let start = 0;
+      for (const end of boundaries) {
+        const s = text.slice(start, end).trim();
+        if (s.length >= 3) sentences.push(s);
+        start = end;
+      }
+      // Trailing fragment with terminal punctuation (e.g. last sentence of stream_final)
+      const rem = text.slice(start).trim();
+      if (rem.length >= 3 && /[.!?]$/.test(rem)) sentences.push(rem);
+      return sentences;
     }
 
     // Called on every stream_delta while voiceModeActive.
@@ -3596,18 +3636,25 @@
       const sentences = extractSentences(clean);
       if (!sentences.length) return;
 
-      // Only queue sentences we've found — leave the last incomplete fragment for next delta
-      let charsConsumed = 0;
+      // Queue each complete sentence and advance cursor past them.
+      // We advance by finding each sentence in the cleaned text and tracking position.
+      let searchFrom = 0;
+      let totalAdvance = 0;
       for (const s of sentences) {
-        const trimmed = s.trim();
-        if (trimmed.length < 3) continue; // skip noise
-        const url = `/api/voice/speak?agent=${encodeURIComponent(agentKey)}&text=${encodeURIComponent(trimmed)}`;
+        const idx = clean.indexOf(s, searchFrom);
+        if (idx === -1) continue;
+        const url = `/api/voice/speak?agent=${encodeURIComponent(agentKey)}&text=${encodeURIComponent(s)}`;
         ttsQueue.push(url);
-        charsConsumed += s.length;
+        searchFrom = idx + s.length;
+        totalAdvance = idx + s.length;
       }
 
-      if (charsConsumed > 0) {
-        ttsStreamCursor.set(agentKey, cursor + newText.indexOf(sentences[sentences.length - 1]) + sentences[sentences.length - 1].length);
+      if (totalAdvance > 0) {
+        // Advance cursor by the raw (pre-markdown-strip) equivalent.
+        // Since stripMarkdownForTTS can change length, we use a ratio approximation
+        // but clamp to avoid overshooting. Simple: advance by totalAdvance chars in raw.
+        // In practice markdown-stripped text is shorter, so this is conservative (safe).
+        ttsStreamCursor.set(agentKey, cursor + Math.min(totalAdvance, newText.length));
         setVoiceState('speaking');
         if (!ttsPlaying) playNextTTS();
       }

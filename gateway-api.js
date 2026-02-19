@@ -12,17 +12,17 @@ const chatDb = require('./db.js');
 // VOICE - Agent TTS voice mapping (Microsoft Edge TTS neural voices)
 // ============================================================
 const AGENT_VOICES = {
-  isla:   'en-US-JennyNeural',        // female, warm
-  nova:   'en-US-AriaNeural',         // female, professional
-  lena:   'en-US-MichelleNeural',     // female, energetic
-  remy:   'en-US-GuyNeural',          // male, friendly
-  marcus: 'en-US-DavisNeural',        // male, confident
-  harper: 'en-US-NancyNeural',        // female, precise
-  eli:    'en-US-TonyNeural',         // male, authoritative
-  sage:   'en-US-JaneNeural',         // female, thoughtful
-  julie:  'en-US-SaraNeural',         // female, upbeat
-  val:    'en-US-BrandonNeural',      // male, measured
-  atlas:  'en-US-ChristopherNeural',  // male, adventurous
+  isla:   'en-US-JennyNeural',        // female, warm/friendly
+  nova:   'en-US-AriaNeural',         // female, professional/confident
+  lena:   'en-US-MichelleNeural',     // female, energetic/pleasant
+  remy:   'en-US-GuyNeural',          // male, passionate/friendly
+  marcus: 'en-US-EricNeural',         // male, rational/confident
+  harper: 'en-US-EmmaNeural',         // female, cheerful/clear/precise
+  eli:    'en-US-BrianNeural',        // male, approachable/casual
+  sage:   'en-US-AvaNeural',          // female, expressive/caring/thoughtful
+  julie:  'en-US-AnaNeural',          // female, cute/upbeat (cartoon style)
+  val:    'en-US-RogerNeural',        // male, lively/measured
+  atlas:  'en-US-ChristopherNeural',  // male, reliable/authoritative
 };
 const DEFAULT_VOICE = 'en-US-JennyNeural';
 const WHISPER_MODEL = '/Users/jeremylahners/.cache/whisper-cpp/models/ggml-base.en.bin';
