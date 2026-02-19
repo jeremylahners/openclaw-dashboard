@@ -9,22 +9,22 @@ const { WebSocketServer, WebSocket } = require('ws');
 const chatDb = require('./db.js');
 
 // ============================================================
-// VOICE - Agent TTS voice mapping (macOS say voices)
+// VOICE - Agent TTS voice mapping (Microsoft Edge TTS neural voices)
 // ============================================================
 const AGENT_VOICES = {
-  isla:   'Samantha',               // female, warm
-  nova:   'Shelley (English (US))', // female, professional
-  lena:   'Flo (English (US))',     // female, energetic
-  remy:   'Reed (English (US))',    // male, friendly
-  marcus: 'Eddy (English (US))',    // male, confident
-  harper: 'Sandy (English (US))',   // female, precise
-  eli:    'Rocko (English (US))',   // male, authoritative
-  sage:   'Shelley (English (US))', // female, thoughtful (reuse Shelley)
-  julie:  'Flo (English (US))',     // female, upbeat
-  val:    'Fred',                   // male, measured
-  atlas:  'Reed (English (US))',    // male, adventurous
+  isla:   'en-US-JennyNeural',        // female, warm
+  nova:   'en-US-AriaNeural',         // female, professional
+  lena:   'en-US-MichelleNeural',     // female, energetic
+  remy:   'en-US-GuyNeural',          // male, friendly
+  marcus: 'en-US-DavisNeural',        // male, confident
+  harper: 'en-US-NancyNeural',        // female, precise
+  eli:    'en-US-TonyNeural',         // male, authoritative
+  sage:   'en-US-JaneNeural',         // female, thoughtful
+  julie:  'en-US-SaraNeural',         // female, upbeat
+  val:    'en-US-BrandonNeural',      // male, measured
+  atlas:  'en-US-ChristopherNeural',  // male, adventurous
 };
-const DEFAULT_VOICE = 'Samantha';
+const DEFAULT_VOICE = 'en-US-JennyNeural';
 const WHISPER_MODEL = '/Users/jeremylahners/.cache/whisper-cpp/models/ggml-base.en.bin';
 const WHISPER_BIN = '/opt/homebrew/bin/whisper-cli';
 const FFMPEG_BIN  = '/opt/homebrew/bin/ffmpeg';
@@ -916,7 +916,7 @@ const server = http.createServer(async (req, res) => {
   // VOICE: Transcribe audio → text via Whisper
   // POST /voice/transcribe  (multipart: field "audio", webm/ogg blob)
   // ============================================================
-  else if (req.url === '/voice/transcribe' && req.method === 'POST') {
+  else if ((req.url === '/voice/transcribe' || req.url === '/api/voice/transcribe') && req.method === 'POST') {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'voice-'));
     const rawPath  = path.join(tmpDir, 'input.webm');
     const wavPath  = path.join(tmpDir, 'input.wav');
@@ -1009,10 +1009,10 @@ const server = http.createServer(async (req, res) => {
   }
 
   // ============================================================
-  // VOICE: Text → speech via macOS say + ffmpeg
+  // VOICE: Text → speech via edge-tts (Microsoft neural voices)
   // GET /voice/speak?text=...&agent=...
   // ============================================================
-  else if (req.url.startsWith('/voice/speak') && req.method === 'GET') {
+  else if ((req.url.startsWith('/voice/speak') || req.url.startsWith('/api/voice/speak')) && req.method === 'GET') {
     const urlObj = new URL(req.url, 'http://localhost');
     const text   = urlObj.searchParams.get('text') || '';
     const agent  = urlObj.searchParams.get('agent') || '';
@@ -1024,27 +1024,18 @@ const server = http.createServer(async (req, res) => {
     }
 
     const tmpDir  = fs.mkdtempSync(path.join(os.tmpdir(), 'tts-'));
-    const aiffPath = path.join(tmpDir, 'tts.aiff');
-    const mp3Path  = path.join(tmpDir, 'tts.mp3');
+    const mp3Path = path.join(tmpDir, 'tts.mp3');
 
     const cleanup = () => {
       try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
     };
 
     try {
-      // Generate speech with macOS say
+      // Generate speech with edge-tts (Microsoft neural voices)
       await new Promise((resolve, reject) => {
-        execFile('say', ['-v', voice, '-o', aiffPath, text], { timeout: 15000 }, (err) => {
-          if (err) reject(new Error(`say: ${err.message}`));
-          else resolve();
-        });
-      });
-
-      // Convert aiff → mp3
-      await new Promise((resolve, reject) => {
-        execFile(FFMPEG_BIN, ['-i', aiffPath, '-acodec', 'libmp3lame', '-ab', '128k', mp3Path, '-y'],
-          { timeout: 15000 }, (err, stdout, stderr) => {
-            if (err) reject(new Error(`ffmpeg failed: ${err.message} | ${stderr}`));
+        execFile('python3', ['-m', 'edge_tts', '--voice', voice, '--text', text, '--write-media', mp3Path],
+          { timeout: 20000 }, (err, stdout, stderr) => {
+            if (err) reject(new Error(`edge-tts: ${stderr || err.message}`));
             else resolve();
           });
       });

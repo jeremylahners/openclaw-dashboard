@@ -140,6 +140,7 @@
           <span style="font-size: 0.85rem; color: #888;" id="chatChannelName">#hq</span>
           <div style="display: flex; align-items: center; gap: 8px;">
             <button id="voiceModeBtn" title="Voice conversation mode">🎙️ Talk</button>
+          <audio id="ttsAudioEl" playsinline preload="none" style="display:none;"></audio>
             <span id="voiceStatusLabel" style="font-size: 0.75rem; color: #888; display: none;"></span>
             <span id="wsStatus" style="font-size: 0.7rem; color: #555;">Connecting...</span>
           </div>
@@ -1814,6 +1815,10 @@
         // Server-owned Gateway streaming events
         if (msg.type === 'stream_delta') {
           updateStreaming(msg.agent, msg.text);
+          // Streaming TTS: feed cumulative text to sentence extractor
+          if (voiceModeActive && msg.agent === currentAgentKey) {
+            onStreamDeltaVoice(msg.agent, msg.text || '');
+          }
         }
 
         if (msg.type === 'stream_final') {
@@ -1822,6 +1827,10 @@
           }
           // If text is present, the server already committed the message —
           // message_committed will follow and replace the streaming element.
+          // Speak any trailing fragment not yet queued
+          if (voiceModeActive && msg.agent === currentAgentKey && msg.text) {
+            onStreamFinalVoice(msg.agent, msg.text);
+          }
         }
 
         if (msg.type === 'stream_error') {
@@ -3365,8 +3374,16 @@
     let vadTimer        = null;
     let lastSoundTime   = 0;
     let hasSpeech       = false;
-    let currentAudio    = null;
     let voiceState      = 'idle'; // idle | listening | processing | speaking
+
+    // --- Streaming TTS state ---
+    // Use the persistent <audio id="ttsAudioEl"> DOM element (iOS requires
+    // play() on an element touched during a user gesture, not new Audio())
+    let ttsQueue        = [];    // array of { url, sentences } to play sequentially
+    let ttsPlaying      = false;
+    // Per-agent cursor: tracks how much text has already been queued for TTS
+    // keyed by agentKey, value = char offset into accumulated stream text
+    const ttsStreamCursor = new Map();
 
     // --- DOM refs ---
     const voiceModeBtn   = document.getElementById('voiceModeBtn');
@@ -3395,7 +3412,7 @@
     // --- Talk button ---
     voiceModeBtn?.addEventListener('click', () => {
       if (voiceModeActive) endVoiceMode();
-      else startVoiceMode();
+      else { primeAudioElement(); startVoiceMode(); }
     });
 
     document.addEventListener('keydown', e => {
@@ -3404,6 +3421,8 @@
 
     async function startVoiceMode() {
       if (voiceModeActive) return;
+      // Prime the audio element during user gesture — required for iOS autoplay policy
+      primeAudioElement();
       try {
         voiceStream = await navigator.mediaDevices.getUserMedia({ audio: true });
       } catch (e) {
@@ -3515,6 +3534,9 @@
     async function sendMessageText(text) {
       if (!text || !currentAgentKey) return;
 
+      // Reset streaming TTS cursor for this agent — fresh response incoming
+      ttsStreamCursor.set(currentAgentKey, 0);
+
       const now = Date.now();
       const optimisticMsg = {
         seq: now, agent: currentAgentKey, content: text, isBot: false,
@@ -3536,45 +3558,131 @@
       } catch (e) {
         console.error('[Voice] Send failed:', e.message);
       }
-      // Response arrives via WebSocket → appendMessageEl → speakResponse()
+      // Response streams in via stream_delta → onStreamDeltaVoice()
+      // Final message committed via message_committed → appendMessageEl → (no more TTS, already playing)
     }
 
-    // --- TTS ---
-    function speakResponse(text, agentKey) {
+    // -------------------------------------------------------
+    // STREAMING TTS — sentence-by-sentence as response arrives
+    // -------------------------------------------------------
+
+    // Get the persistent DOM audio element (primed by user gesture on Talk button)
+    function getTTSEl() { return document.getElementById('ttsAudioEl'); }
+
+    // Called from startVoiceMode() on button tap (user gesture) to prime iOS audio
+    function primeAudioElement() {
+      const el = getTTSEl();
+      if (!el) return;
+      el.src = ''; el.load();
+    }
+
+    // Extract complete sentences from text, returning an array.
+    // A sentence ends with . ! ? followed by whitespace or end-of-string.
+    // Handles abbreviations crudely (Mr. Mrs. Dr. etc.) by requiring ≥2 chars before punctuation.
+    function extractSentences(text) {
+      const re = /[^.!?]{2,}[.!?]+(?:\s+|$)/g;
+      return text.match(re) || [];
+    }
+
+    // Called on every stream_delta while voiceModeActive.
+    // cumulativeText: the full accumulated text so far for this agent's response.
+    function onStreamDeltaVoice(agentKey, cumulativeText) {
       if (!voiceModeActive) return;
-      stopTTS(); // barge-in: stop any current audio
-      const clean = stripMarkdownForTTS(text);
-      if (!clean.trim()) {
-        if (voiceModeActive) setTimeout(() => startListening(), 300);
+      const cursor = ttsStreamCursor.get(agentKey) ?? 0;
+      const newText = cumulativeText.slice(cursor);
+      if (!newText) return;
+
+      const clean = stripMarkdownForTTS(newText);
+      const sentences = extractSentences(clean);
+      if (!sentences.length) return;
+
+      // Only queue sentences we've found — leave the last incomplete fragment for next delta
+      let charsConsumed = 0;
+      for (const s of sentences) {
+        const trimmed = s.trim();
+        if (trimmed.length < 3) continue; // skip noise
+        const url = `/api/voice/speak?agent=${encodeURIComponent(agentKey)}&text=${encodeURIComponent(trimmed)}`;
+        ttsQueue.push(url);
+        charsConsumed += s.length;
+      }
+
+      if (charsConsumed > 0) {
+        ttsStreamCursor.set(agentKey, cursor + newText.indexOf(sentences[sentences.length - 1]) + sentences[sentences.length - 1].length);
+        setVoiceState('speaking');
+        if (!ttsPlaying) playNextTTS();
+      }
+    }
+
+    // Called when stream_final arrives — speak any leftover fragment
+    function onStreamFinalVoice(agentKey, cumulativeText) {
+      if (!voiceModeActive) return;
+      const cursor = ttsStreamCursor.get(agentKey) ?? 0;
+      const remainder = stripMarkdownForTTS(cumulativeText.slice(cursor)).trim();
+      ttsStreamCursor.delete(agentKey);
+      if (remainder.length >= 3) {
+        const url = `/api/voice/speak?agent=${encodeURIComponent(agentKey)}&text=${encodeURIComponent(remainder)}`;
+        ttsQueue.push(url);
+        setVoiceState('speaking');
+        if (!ttsPlaying) playNextTTS();
+      }
+    }
+
+    function playNextTTS() {
+      if (ttsQueue.length === 0) {
+        ttsPlaying = false;
+        if (voiceModeActive) setTimeout(() => startListening(), 400);
         return;
       }
-      setVoiceState('speaking');
-      const url = `/api/voice/speak?agent=${encodeURIComponent(agentKey)}&text=${encodeURIComponent(clean.substring(0, 500))}`;
-      currentAudio = new Audio(url);
-      currentAudio.onended  = () => { currentAudio = null; if (voiceModeActive) setTimeout(() => startListening(), 400); };
-      currentAudio.onerror  = () => { currentAudio = null; if (voiceModeActive) setTimeout(() => startListening(), 400); };
-      currentAudio.play().catch(e => {
+      ttsPlaying = true;
+      const url = ttsQueue.shift();
+      const el = getTTSEl();
+      if (!el) { playNextTTS(); return; }
+      el.onended = () => playNextTTS();
+      el.onerror = () => { console.error('[TTS] Audio error'); playNextTTS(); };
+      el.src = url;
+      el.load();
+      el.play().catch(e => {
         console.error('[TTS] Play failed:', e.message);
-        currentAudio = null;
-        if (voiceModeActive) setTimeout(() => startListening(), 400);
+        playNextTTS();
       });
     }
 
     function stopTTS() {
-      if (currentAudio) { currentAudio.pause(); currentAudio = null; }
+      ttsQueue = [];
+      ttsPlaying = false;
+      const el = getTTSEl();
+      if (el && !el.paused) { el.pause(); el.src = ''; }
     }
 
-    // Replay button handler (always available, not just in voice mode)
+    // speakResponse: used by appendMessageEl for completed (non-streaming) messages
+    // In streaming mode this should rarely fire (cursor handles it), but it's the fallback.
+    function speakResponse(text, agentKey) {
+      if (!voiceModeActive) return;
+      // If streaming TTS already handled this agent's response, skip
+      const cursor = ttsStreamCursor.get(agentKey);
+      if (cursor !== undefined) return; // streaming already in progress
+      stopTTS();
+      const clean = stripMarkdownForTTS(text);
+      if (!clean.trim()) { if (voiceModeActive) setTimeout(() => startListening(), 300); return; }
+      const url = `/api/voice/speak?agent=${encodeURIComponent(agentKey)}&text=${encodeURIComponent(clean.substring(0, 3000))}`;
+      ttsQueue.push(url);
+      setVoiceState('speaking');
+      if (!ttsPlaying) playNextTTS();
+    }
+
+    // Replay button handler (works outside voice mode too)
     function replayTTS(btn, text) {
       stopTTS();
       const clean = stripMarkdownForTTS(text);
       if (!clean.trim()) return;
       btn.classList.add('playing');
-      const url = `/api/voice/speak?agent=${encodeURIComponent(currentAgentKey || 'isla')}&text=${encodeURIComponent(clean.substring(0, 500))}`;
-      const audio = new Audio(url);
-      audio.onended = () => btn.classList.remove('playing');
-      audio.onerror = () => btn.classList.remove('playing');
-      audio.play().catch(() => btn.classList.remove('playing'));
+      const el = getTTSEl();
+      if (!el) return;
+      el.onended = () => { btn.classList.remove('playing'); ttsPlaying = false; };
+      el.onerror = () => { btn.classList.remove('playing'); ttsPlaying = false; };
+      el.src = `/api/voice/speak?agent=${encodeURIComponent(currentAgentKey || 'isla')}&text=${encodeURIComponent(clean.substring(0, 3000))}`;
+      el.load();
+      el.play().catch(() => btn.classList.remove('playing'));
     }
 
     function stripMarkdownForTTS(text) {
