@@ -65,6 +65,29 @@ Use `sessions_history()` to manually check agent communication
 
 ## Other Known Issues
 
+### Bug #5: Version number edge case in TTS sentence splitter
+**Reported**: 2026-02-18 19:36 EST
+**Reporter**: Harper (code review)
+**Severity**: Very Low
+**Status**: Open — deferred, not blocking
+
+**Description:**
+When a text chunk contains a version number like `2.0` near a sentence boundary, the sentence splitter may return 0 sentences for that chunk.
+
+**Example:**
+`'Version 2.0 is out. Download it now.'` → returns `[]` (0 sentences)
+
+**Context:**
+The splitter requires the word before a `.` to be 5+ characters to avoid splitting on abbreviations. Digit sequences like `2.0` are ≤4 chars so the period isn't recognized as a sentence boundary.
+
+**Workaround:**
+In realistic multi-sentence context the issue is self-correcting — the text will eventually be flushed by `onStreamFinalVoice()` once the full response arrives.
+
+**Fix (when prioritized):**
+Extend the boundary regex to also match a period preceded by a digit sequence: `\d+[.]\s+(?=[A-Z])`.
+
+---
+
 ### Bug #2: Streaming Message Cleanup Issue
 **Reported**: 2026-02-14 20:50 EST  
 **Reporter**: Jeremy  
