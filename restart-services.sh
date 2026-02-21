@@ -68,6 +68,19 @@ kill_manual_whisper() {
     fi
 }
 
+# Function to kill any manual kokoro-server processes
+kill_manual_kokoro() {
+    echo -e "\n${YELLOW}Checking for manual kokoro-server processes...${NC}"
+    MANUAL_PIDS=$(ps aux | grep "[k]okoro-server" | awk '{print $2}')
+    if [ -n "$MANUAL_PIDS" ]; then
+        echo "Found manual processes: $MANUAL_PIDS"
+        echo "$MANUAL_PIDS" | xargs kill -9
+        echo -e "${GREEN}✓ Killed manual kokoro-server processes${NC}"
+    else
+        echo "No manual processes found"
+    fi
+}
+
 # Parse arguments
 SERVICE="$1"
 
@@ -96,20 +109,37 @@ case "$SERVICE" in
             echo "  launchctl load ~/Library/LaunchAgents/com.openclaw.whisper-server.plist"
         fi
         ;;
+    kokoro)
+        echo -e "\n${YELLOW}Restarting kokoro-server...${NC}"
+        kill_manual_kokoro
+        if launchctl print gui/$UID/com.openclaw.kokoro-server &>/dev/null; then
+            launchctl kickstart -k gui/$UID/com.openclaw.kokoro-server
+            echo -e "${GREEN}✓ kokoro-server restarted${NC}"
+        else
+            echo -e "${RED}kokoro-server LaunchAgent not loaded. Install with:${NC}"
+            echo "  cp kokoro-server.plist ~/Library/LaunchAgents/com.openclaw.kokoro-server.plist"
+            echo "  launchctl load ~/Library/LaunchAgents/com.openclaw.kokoro-server.plist"
+        fi
+        ;;
     both|"")
         echo -e "\n${YELLOW}Restarting all services...${NC}"
         kill_manual_backend
         kill_manual_frontend
         kill_manual_whisper
+        kill_manual_kokoro
         launchctl kickstart -k gui/$UID/com.openclaw.office-backend
         launchctl kickstart -k gui/$UID/com.openclaw.office-frontend
         if launchctl print gui/$UID/com.openclaw.whisper-server &>/dev/null; then
             launchctl kickstart -k gui/$UID/com.openclaw.whisper-server
-            echo -e "${GREEN}✓ All services restarted (including whisper-server)${NC}"
         else
-            echo -e "${GREEN}✓ Backend & frontend restarted${NC}"
             echo -e "${YELLOW}⚠ whisper-server not loaded (optional — see whisper-server.plist)${NC}"
         fi
+        if launchctl print gui/$UID/com.openclaw.kokoro-server &>/dev/null; then
+            launchctl kickstart -k gui/$UID/com.openclaw.kokoro-server
+        else
+            echo -e "${YELLOW}⚠ kokoro-server not loaded (optional — see kokoro-server.plist)${NC}"
+        fi
+        echo -e "${GREEN}✓ All services restarted${NC}"
         ;;
     status)
         echo -e "\n${YELLOW}Service Status:${NC}"
@@ -119,8 +149,10 @@ case "$SERVICE" in
         launchctl print gui/$UID/com.openclaw.office-frontend 2>&1 | grep "state = "
         echo -e "\nWhisper-server:"
         launchctl print gui/$UID/com.openclaw.whisper-server 2>&1 | grep "state = " || echo "  Not loaded"
+        echo -e "\nKokoro-server:"
+        launchctl print gui/$UID/com.openclaw.kokoro-server 2>&1 | grep "state = " || echo "  Not loaded"
         echo -e "\nManual processes:"
-        ps aux | grep -E "[g]ateway-api.js|[s]erve.js|[w]hisper-server" || echo "None"
+        ps aux | grep -E "[g]ateway-api.js|[s]erve.js|[w]hisper-server|[k]okoro-server" || echo "None"
         ;;
     logs)
         echo -e "\n${YELLOW}Recent logs:${NC}"
@@ -130,12 +162,15 @@ case "$SERVICE" in
         tail -10 /tmp/office-frontend.err
         echo -e "\n${YELLOW}Whisper-server:${NC}"
         tail -10 /tmp/openclaw/whisper-server.log 2>/dev/null || echo "  No logs found"
+        echo -e "\n${YELLOW}Kokoro-server:${NC}"
+        tail -10 /tmp/openclaw/kokoro-server.log 2>/dev/null || echo "  No logs found"
         ;;
     *)
-        echo -e "${RED}Usage: $0 [backend|frontend|whisper|both|status|logs]${NC}"
+        echo -e "${RED}Usage: $0 [backend|frontend|whisper|kokoro|both|status|logs]${NC}"
         echo "  backend  - Restart backend only"
         echo "  frontend - Restart frontend only"
         echo "  whisper  - Restart whisper-server only"
+        echo "  kokoro   - Restart kokoro-server only"
         echo "  both     - Restart all services (default)"
         echo "  status   - Show service status"
         echo "  logs     - Show recent error logs"

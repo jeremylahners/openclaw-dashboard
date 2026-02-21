@@ -21,6 +21,7 @@ npm-debug.log*
 
 # Dependencies
 node_modules/
+.venv/
 
 # SQLite database (user data)
 chat.db
