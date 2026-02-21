@@ -29,6 +29,23 @@ const AGENT_VOICES = {
 const DEFAULT_VOICE = 'en-US-JennyNeural';
 const WHISPER_MODEL = '/Users/jeremylahners/.cache/whisper-cpp/models/ggml-base.en.bin';
 const WHISPER_BIN = '/opt/homebrew/bin/whisper-cli';
+
+// Post-processing corrections for common Whisper misrecognitions.
+// Handles names, local terms, and proper nouns that the model frequently mangles.
+// Keys are regex patterns (case-insensitive), values are the correct replacement.
+const TRANSCRIPT_CORRECTIONS = [
+  // "Isla" — consistently misheard as variations of "Ila", "Eila", "Ayla", etc.
+  [/\b(ila|eila|ayla|eye-?la|isla)\b/gi, 'Isla'],
+  // Add more as discovered: [/\bpattern\b/gi, 'Replacement'],
+];
+
+function applyTranscriptCorrections(text) {
+  let corrected = text;
+  for (const [pattern, replacement] of TRANSCRIPT_CORRECTIONS) {
+    corrected = corrected.replace(pattern, replacement);
+  }
+  return corrected;
+}
 const FFMPEG_BIN  = '/opt/homebrew/bin/ffmpeg';
 const WHISPER_SERVER_URL = 'http://127.0.0.1:8090/inference';
 let whisperServerAvailable = false;
@@ -1046,7 +1063,7 @@ const server = http.createServer(async (req, res) => {
       }
 
       cleanup();
-      res.end(JSON.stringify({ ok: true, transcript }));
+      res.end(JSON.stringify({ ok: true, transcript: applyTranscriptCorrections(transcript) }));
 
     } catch (e) {
       cleanup();

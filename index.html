@@ -3756,18 +3756,38 @@
     }
 
     // --- Barge-in: monitor mic while TTS plays, interrupt on speech ---
+    // Barge-in threshold: higher than SILENCE_THRESHOLD to avoid false triggers.
+    // SILENCE_THRESHOLD (8) is tuned for end-of-utterance detection where the mic
+    // is the only sound source. During TTS playback, ambient audio bleeds into the
+    // mic on mobile, so we need a meaningfully higher threshold here.
+    const BARGE_IN_THRESHOLD = 18;
+
     function startBargeInMonitor() {
       stopBargeInMonitor();
       if (!analyser) return;
+
+      // iOS/mobile: AudioContext often suspends when an <audio> element starts
+      // playing. Resume it so analyser.getByteFrequencyData returns real data.
+      if (audioCtx && audioCtx.state === 'suspended') {
+        audioCtx.resume().catch(() => {});
+      }
+
       const dataArray = new Uint8Array(analyser.frequencyBinCount);
-      let consecutiveHits = 0; // require a few consecutive frames to avoid false triggers
+      let consecutiveHits = 0; // require several consecutive frames to avoid false triggers
       bargeInTimer = setInterval(() => {
         if (!voiceModeActive || !ttsPlaying) { stopBargeInMonitor(); return; }
+
+        // Re-check AudioContext state on each tick — iOS can re-suspend it
+        if (audioCtx && audioCtx.state === 'suspended') {
+          audioCtx.resume().catch(() => {});
+          return; // skip this tick while resuming
+        }
+
         analyser.getByteFrequencyData(dataArray);
         const volume = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
-        if (volume > SILENCE_THRESHOLD) {
+        if (volume > BARGE_IN_THRESHOLD) {
           consecutiveHits++;
-          if (consecutiveHits >= 3) { // 300ms of speech → barge-in
+          if (consecutiveHits >= 4) { // 400ms of sustained speech above threshold → barge-in
             console.log('[Voice] Barge-in detected (vol=' + volume.toFixed(1) + '), interrupting TTS');
             stopTTS();
             startListening();
