@@ -39,8 +39,21 @@ const TRANSCRIPT_CORRECTIONS = [
   // Add more as discovered: [/\bpattern\b/gi, 'Replacement'],
 ];
 
+// Collapse Whisper hallucination loops — repeated words/phrases back-to-back.
+// Whisper on short audio clips often gets stuck repeating the last word or phrase.
+// Examples: "perfect perfect" → "perfect", "well done well done" → "well done"
+function collapseRepeats(text) {
+  // Pass 1: collapse immediately repeated single words (e.g. "word word word" → "word")
+  let result = text.replace(/\b(\w+)(\s+\1){1,5}\b/gi, '$1');
+  // Pass 2: collapse repeated short phrases (2-4 words) e.g. "well done well done" → "well done"
+  result = result.replace(/\b((?:\w+\s+){1,3}\w+)\s+\1\b/gi, '$1');
+  // Pass 3: clean up any double spaces left behind
+  result = result.replace(/\s{2,}/g, ' ').trim();
+  return result;
+}
+
 function applyTranscriptCorrections(text) {
-  let corrected = text;
+  let corrected = collapseRepeats(text);
   for (const [pattern, replacement] of TRANSCRIPT_CORRECTIONS) {
     corrected = corrected.replace(pattern, replacement);
   }
@@ -1016,11 +1029,16 @@ const server = http.createServer(async (req, res) => {
         transcript = await new Promise((resolve, reject) => {
           const boundary = '----WhisperBoundary' + Date.now();
           const header = `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="audio.webm"\r\nContent-Type: audio/webm\r\n\r\n`;
-          const fieldTemp = `\r\n--${boundary}\r\nContent-Disposition: form-data; name="temperature"\r\n\r\n0.0`;
-          const fieldFmt = `\r\n--${boundary}\r\nContent-Disposition: form-data; name="response_format"\r\n\r\njson`;
+          // temperature=0.2: non-zero reduces hallucination loops vs greedy 0.0
+          // best_of=3: sample multiple candidates, pick best — reduces repetition
+          const fieldTemp   = `\r\n--${boundary}\r\nContent-Disposition: form-data; name="temperature"\r\n\r\n0.2`;
+          const fieldBestOf = `\r\n--${boundary}\r\nContent-Disposition: form-data; name="best_of"\r\n\r\n3`;
+          const fieldFmt    = `\r\n--${boundary}\r\nContent-Disposition: form-data; name="response_format"\r\n\r\njson`;
           const footer = `\r\n--${boundary}--\r\n`;
           const payload = Buffer.concat([
-            Buffer.from(header), audioData, Buffer.from(fieldTemp), Buffer.from(fieldFmt), Buffer.from(footer)
+            Buffer.from(header), audioData,
+            Buffer.from(fieldTemp), Buffer.from(fieldBestOf), Buffer.from(fieldFmt),
+            Buffer.from(footer)
           ]);
 
           const req = http.request(WHISPER_SERVER_URL, {
