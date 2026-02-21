@@ -77,6 +77,20 @@ function checkWhisperServer(onDone) {
 checkWhisperServer();
 setInterval(checkWhisperServer, 30000);
 
+// Kokoro TTS server (local neural TTS, replaces edge-tts when available)
+const KOKORO_SERVER_URL = 'http://127.0.0.1:8880/audio/speech';
+let kokoroAvailable = false;
+function checkKokoroServer() {
+  const req = http.get('http://127.0.0.1:8880/health', { timeout: 2000 }, (res) => {
+    kokoroAvailable = res.statusCode === 200;
+    res.resume();
+  });
+  req.on('error', () => { kokoroAvailable = false; });
+  req.on('timeout', () => { req.destroy(); kokoroAvailable = false; });
+}
+checkKokoroServer();
+setInterval(checkKokoroServer, 30000);
+
 // Load configs
 const config = require('./config.js');
 const { loadConfig, buildFrontendConfig } = require('./workspace-config.js');
@@ -1109,6 +1123,37 @@ const server = http.createServer(async (req, res) => {
       return res.end(JSON.stringify({ ok: false, error: 'text required' }));
     }
 
+    // Kokoro TTS: local neural TTS, zero subprocess cost
+    if (kokoroAvailable) {
+      try {
+        const kokoroVoice = { 'isla': 'af_heart', 'lena': 'af_bella' }[agent] || 'af_heart';
+        const body = JSON.stringify({ model: 'kokoro', input: text, voice: kokoroVoice, response_format: 'wav' });
+        res.setHeader('Content-Type', 'audio/wav');
+        res.setHeader('Transfer-Encoding', 'chunked');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('X-Voice', kokoroVoice);
+        res.setHeader('X-TTS-Engine', 'kokoro');
+        res.statusCode = 200;
+
+        const kreq = http.request(KOKORO_SERVER_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
+          timeout: 10000
+        }, (kres) => { kres.pipe(res); });
+        kreq.on('error', (e) => {
+          console.error('[Kokoro]', e.message);
+          kokoroAvailable = false;
+          if (!res.writableEnded) res.end();
+        });
+        kreq.on('timeout', () => { kreq.destroy(); });
+        kreq.end(body);
+        return;
+      } catch (e) {
+        console.error('[Kokoro] fallback to Edge TTS:', e.message);
+      }
+    }
+
+    // Edge TTS fallback
     try {
       const tts = new EdgeTTS({ voice, lang: 'en-US', outputFormat: 'audio-24khz-96kbitrate-mono-mp3' });
       const wsConnect = await tts._connectWebSocket();
@@ -1873,9 +1918,10 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ OpenClaw Native Web Interface API running on http://0.0.0.0:${PORT}`);
   console.log(`🔗 Gateway: ${GATEWAY_URL}`);
   console.log(`📡 Connected to ${Object.keys(agentSessions).length} agents`);
-  // Delay STT status log slightly so the async health check can resolve first
+  // Delay voice status log slightly so the async health checks can resolve first
   setTimeout(() => {
     console.log(`🎙️ Whisper STT: ${whisperServerAvailable ? 'whisper-server/ggml-medium.en (fast)' : 'whisper-cli fallback (no server on :8090)'}`);
+    console.log(`🔊 TTS: ${kokoroAvailable ? 'Kokoro local neural (fast, :8880)' : 'Edge TTS fallback (no Kokoro on :8880)'}`);
   }, 1000);
 });
 
