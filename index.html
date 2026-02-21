@@ -3438,6 +3438,9 @@
     // Per-agent cursor: tracks how much text has already been queued for TTS
     // keyed by agentKey, value = char offset into accumulated stream text
     const ttsStreamCursor = new Map();
+    // Tracks agents whose response was fully handled by streaming TTS — prevents
+    // speakResponse() from double-playing the full text when message_committed fires.
+    const ttsStreamComplete = new Set();
 
     // --- DOM refs ---
     const voiceModeBtn   = document.getElementById('voiceModeBtn');
@@ -3710,6 +3713,8 @@
       const cursor = ttsStreamCursor.get(agentKey) ?? 0;
       const remainder = stripMarkdownForTTS(cumulativeText.slice(cursor)).trim();
       ttsStreamCursor.delete(agentKey);
+      // Mark this agent's response as streamed so speakResponse() skips the re-play
+      ttsStreamComplete.add(agentKey);
       if (remainder.length >= 3) {
         const url = `/api/voice/speak?agent=${encodeURIComponent(agentKey)}&text=${encodeURIComponent(remainder)}`;
         ttsQueue.push(url);
@@ -3781,7 +3786,11 @@
     // In streaming mode this should rarely fire (cursor handles it), but it's the fallback.
     function speakResponse(text, agentKey) {
       if (!voiceModeActive) return;
-      // If streaming TTS already handled this agent's response, skip
+      // If streaming TTS already handled this agent's response, skip the re-play
+      // (message_committed fires appendMessageEl → speakResponse after stream is done,
+      // which would double-play the full response — this prevents that)
+      if (ttsStreamComplete.has(agentKey)) { ttsStreamComplete.delete(agentKey); return; }
+      // If streaming is still in progress for this agent, also skip
       const cursor = ttsStreamCursor.get(agentKey);
       if (cursor !== undefined) return; // streaming already in progress
       stopTTS();
