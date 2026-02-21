@@ -39,11 +39,15 @@ kill_manual_frontend() {
     fi
 }
 
-# Whisper-server model selection (prefer small, fall back to base)
+# Whisper-server model selection (prefer medium, fall back to small, then base)
+WHISPER_MODEL_MEDIUM="/Users/jeremylahners/.cache/whisper-cpp/models/ggml-medium.en.bin"
 WHISPER_MODEL_SMALL="/Users/jeremylahners/.cache/whisper-cpp/models/ggml-small.en.bin"
 WHISPER_MODEL_BASE="/Users/jeremylahners/.cache/whisper-cpp/models/ggml-base.en.bin"
-if [ -f "$WHISPER_MODEL_SMALL" ]; then
+if [ -f "$WHISPER_MODEL_MEDIUM" ]; then
+    WHISPER_MODEL="$WHISPER_MODEL_MEDIUM"
+elif [ -f "$WHISPER_MODEL_SMALL" ]; then
     WHISPER_MODEL="$WHISPER_MODEL_SMALL"
+    echo -e "${YELLOW}⚠ ggml-medium.en.bin not found, using small model${NC}"
 elif [ -f "$WHISPER_MODEL_BASE" ]; then
     WHISPER_MODEL="$WHISPER_MODEL_BASE"
     echo -e "${YELLOW}⚠ ggml-small.en.bin not found, using base model${NC}"

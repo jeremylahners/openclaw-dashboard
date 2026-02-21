@@ -23,7 +23,7 @@
   <array>
     <string>/opt/homebrew/bin/whisper-server</string>
     <string>-m</string>
-    <string>/Users/jeremylahners/.cache/whisper-cpp/models/ggml-small.en.bin</string>
+    <string>/Users/jeremylahners/.cache/whisper-cpp/models/ggml-medium.en.bin</string>
     <string>--port</string>
     <string>8090</string>
     <string>--convert</string>

@@ -1875,7 +1875,7 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`📡 Connected to ${Object.keys(agentSessions).length} agents`);
   // Delay STT status log slightly so the async health check can resolve first
   setTimeout(() => {
-    console.log(`🎙️ Whisper STT: ${whisperServerAvailable ? 'whisper-server/ggml-small.en (fast)' : 'whisper-cli fallback (no server on :8090)'}`);
+    console.log(`🎙️ Whisper STT: ${whisperServerAvailable ? 'whisper-server/ggml-medium.en (fast)' : 'whisper-cli fallback (no server on :8090)'}`);
   }, 1000);
 });
 
