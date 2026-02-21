@@ -3481,7 +3481,14 @@
       // Prime the audio element during user gesture — required for iOS autoplay policy
       primeAudioElement();
       try {
-        voiceStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        voiceStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,   // critical: prevents TTS speaker audio from
+            noiseSuppression: true,   // bleeding into mic and confusing the VAD
+            autoGainControl: true,
+            sampleRate: 16000,
+          }
+        });
       } catch (e) {
         toast.error('Microphone access denied. Check browser permissions.');
         return;
@@ -3675,20 +3682,21 @@
     // cumulativeText: the full accumulated text so far for this agent's response.
     function onStreamDeltaVoice(agentKey, cumulativeText) {
       if (!voiceModeActive) return;
+      // Cursor is tracked in CLEAN (markdown-stripped) text space to avoid
+      // coordinate mismatch that caused word repeats at sentence boundaries.
+      const cleanCumulative = stripMarkdownForTTS(cumulativeText);
       const cursor = ttsStreamCursor.get(agentKey) ?? 0;
-      const newText = cumulativeText.slice(cursor);
-      if (!newText) return;
+      const newClean = cleanCumulative.slice(cursor);
+      if (!newClean) return;
 
-      const clean = stripMarkdownForTTS(newText);
-      const sentences = extractSentences(clean);
+      const sentences = extractSentences(newClean);
       if (!sentences.length) return;
 
-      // Queue each complete sentence and advance cursor past them.
-      // We advance by finding each sentence in the cleaned text and tracking position.
+      // Queue each complete sentence and advance cursor in clean-text space.
       let searchFrom = 0;
       let totalAdvance = 0;
       for (const s of sentences) {
-        const idx = clean.indexOf(s, searchFrom);
+        const idx = newClean.indexOf(s, searchFrom);
         if (idx === -1) continue;
         const url = `/api/voice/speak?agent=${encodeURIComponent(agentKey)}&text=${encodeURIComponent(s)}`;
         ttsQueue.push(url);
@@ -3697,11 +3705,7 @@
       }
 
       if (totalAdvance > 0) {
-        // Advance cursor by the raw (pre-markdown-strip) equivalent.
-        // Since stripMarkdownForTTS can change length, we use a ratio approximation
-        // but clamp to avoid overshooting. Simple: advance by totalAdvance chars in raw.
-        // In practice markdown-stripped text is shorter, so this is conservative (safe).
-        ttsStreamCursor.set(agentKey, cursor + Math.min(totalAdvance, newText.length));
+        ttsStreamCursor.set(agentKey, cursor + totalAdvance); // clean-space offset
         setVoiceState('speaking');
         if (!ttsPlaying) playNextTTS();
       }
@@ -3710,8 +3714,9 @@
     // Called when stream_final arrives — speak any leftover fragment
     function onStreamFinalVoice(agentKey, cumulativeText) {
       if (!voiceModeActive) return;
+      const cleanCumulative = stripMarkdownForTTS(cumulativeText);
       const cursor = ttsStreamCursor.get(agentKey) ?? 0;
-      const remainder = stripMarkdownForTTS(cumulativeText.slice(cursor)).trim();
+      const remainder = cleanCumulative.slice(cursor).trim();
       ttsStreamCursor.delete(agentKey);
       // Mark this agent's response as streamed so speakResponse() skips the re-play
       ttsStreamComplete.add(agentKey);
