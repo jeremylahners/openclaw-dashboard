@@ -3,9 +3,11 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const crypto = require('crypto');
 const { execFile, spawn } = require('child_process');
 const webpush = require('web-push');
 const { WebSocketServer, WebSocket } = require('ws');
+const { EdgeTTS } = require('node-edge-tts');
 const chatDb = require('./db.js');
 
 // ============================================================
@@ -28,6 +30,20 @@ const DEFAULT_VOICE = 'en-US-JennyNeural';
 const WHISPER_MODEL = '/Users/jeremylahners/.cache/whisper-cpp/models/ggml-base.en.bin';
 const WHISPER_BIN = '/opt/homebrew/bin/whisper-cli';
 const FFMPEG_BIN  = '/opt/homebrew/bin/ffmpeg';
+const WHISPER_SERVER_URL = 'http://127.0.0.1:8090/inference';
+let whisperServerAvailable = false;
+
+// Check if whisper-server is running on startup (and periodically)
+function checkWhisperServer() {
+  const req = http.get('http://127.0.0.1:8090/', { timeout: 2000 }, (res) => {
+    whisperServerAvailable = true;
+    res.resume();
+  });
+  req.on('error', () => { whisperServerAvailable = false; });
+  req.on('timeout', () => { req.destroy(); whisperServerAvailable = false; });
+}
+checkWhisperServer();
+setInterval(checkWhisperServer, 30000);
 
 // Load configs
 const config = require('./config.js');
@@ -974,27 +990,58 @@ const server = http.createServer(async (req, res) => {
 
       fs.writeFileSync(rawPath, audioData);
 
-      // Convert to wav (whisper needs wav)
-      await new Promise((resolve, reject) => {
-        execFile(FFMPEG_BIN, ['-i', rawPath, '-ar', '16000', '-ac', '1', wavPath, '-y'], (err, stdout, stderr) => {
-          if (err) reject(new Error(`ffmpeg: ${stderr || err.message}`));
-          else resolve();
-        });
-      });
+      let transcript;
 
-      // Transcribe with whisper-cli
-      const transcript = await new Promise((resolve, reject) => {
-        execFile(WHISPER_BIN, [
-          '-m', WHISPER_MODEL,
-          '--no-prints',
-          '-f', wavPath
-        ], { timeout: 30000 }, (err, stdout, stderr) => {
-          if (err) return reject(new Error(`whisper: ${stderr || err.message}`));
-          // Parse output: "[timestamp] text"
-          const text = stdout.replace(/\[\d{2}:\d{2}:\d{2}\.\d{3} --> \d{2}:\d{2}:\d{2}\.\d{3}\]\s*/g, '').trim();
-          resolve(text);
+      if (whisperServerAvailable) {
+        // Fast path: whisper-server (model already loaded, handles conversion)
+        transcript = await new Promise((resolve, reject) => {
+          const boundary = '----WhisperBoundary' + Date.now();
+          const header = `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="audio.webm"\r\nContent-Type: audio/webm\r\n\r\n`;
+          const fieldTemp = `\r\n--${boundary}\r\nContent-Disposition: form-data; name="temperature"\r\n\r\n0.0`;
+          const fieldFmt = `\r\n--${boundary}\r\nContent-Disposition: form-data; name="response_format"\r\n\r\njson`;
+          const footer = `\r\n--${boundary}--\r\n`;
+          const payload = Buffer.concat([
+            Buffer.from(header), audioData, Buffer.from(fieldTemp), Buffer.from(fieldFmt), Buffer.from(footer)
+          ]);
+
+          const req = http.request(WHISPER_SERVER_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': `multipart/form-data; boundary=${boundary}`, 'Content-Length': payload.length },
+            timeout: 30000
+          }, (res) => {
+            const chunks = [];
+            res.on('data', d => chunks.push(d));
+            res.on('end', () => {
+              try {
+                const json = JSON.parse(Buffer.concat(chunks).toString());
+                resolve((json.text || '').trim());
+              } catch (e) { reject(new Error('whisper-server: invalid JSON response')); }
+            });
+          });
+          req.on('error', (e) => reject(new Error(`whisper-server: ${e.message}`)));
+          req.on('timeout', () => { req.destroy(); reject(new Error('whisper-server: timeout')); });
+          req.end(payload);
         });
-      });
+      } else {
+        // Fallback: whisper-cli subprocess (cold start per request)
+        await new Promise((resolve, reject) => {
+          execFile(FFMPEG_BIN, ['-i', rawPath, '-ar', '16000', '-ac', '1', wavPath, '-y'], (err, stdout, stderr) => {
+            if (err) reject(new Error(`ffmpeg: ${stderr || err.message}`));
+            else resolve();
+          });
+        });
+        transcript = await new Promise((resolve, reject) => {
+          execFile(WHISPER_BIN, [
+            '-m', WHISPER_MODEL,
+            '--no-prints',
+            '-f', wavPath
+          ], { timeout: 30000 }, (err, stdout, stderr) => {
+            if (err) return reject(new Error(`whisper: ${stderr || err.message}`));
+            const text = stdout.replace(/\[\d{2}:\d{2}:\d{2}\.\d{3} --> \d{2}:\d{2}:\d{2}\.\d{3}\]\s*/g, '').trim();
+            resolve(text);
+          });
+        });
+      }
 
       cleanup();
       res.end(JSON.stringify({ ok: true, transcript }));
@@ -1009,8 +1056,10 @@ const server = http.createServer(async (req, res) => {
   }
 
   // ============================================================
-  // VOICE: Text → speech via edge-tts (Microsoft neural voices)
+  // VOICE: Text → speech — streaming via node-edge-tts (no Python subprocess)
   // GET /voice/speak?text=...&agent=...
+  // Streams MP3 audio chunks directly from Edge TTS WebSocket to browser.
+  // First audio chunk arrives in ~200ms (no file I/O, no subprocess startup).
   // ============================================================
   else if ((req.url.startsWith('/voice/speak') || req.url.startsWith('/api/voice/speak')) && req.method === 'GET') {
     const urlObj = new URL(req.url, 'http://localhost');
@@ -1023,40 +1072,67 @@ const server = http.createServer(async (req, res) => {
       return res.end(JSON.stringify({ ok: false, error: 'text required' }));
     }
 
-    const tmpDir  = fs.mkdtempSync(path.join(os.tmpdir(), 'tts-'));
-    const mp3Path = path.join(tmpDir, 'tts.mp3');
-
-    const cleanup = () => {
-      try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
-    };
-
     try {
-      // Generate speech with edge-tts (Microsoft neural voices)
-      await new Promise((resolve, reject) => {
-        execFile('python3', ['-m', 'edge_tts', '--voice', voice, '--text', text, '--write-media', mp3Path],
-          { timeout: 20000 }, (err, stdout, stderr) => {
-            if (err) reject(new Error(`edge-tts: ${stderr || err.message}`));
-            else resolve();
-          });
-      });
+      const tts = new EdgeTTS({ voice, lang: 'en-US', outputFormat: 'audio-24khz-96kbitrate-mono-mp3' });
+      const wsConnect = await tts._connectWebSocket();
 
-      const mp3 = fs.readFileSync(mp3Path);
-      cleanup();
-
-      // Override Content-Type for binary audio response
+      // Stream audio chunks directly to HTTP response as they arrive from Edge TTS
       res.removeHeader('Content-Type');
       res.setHeader('Content-Type', 'audio/mpeg');
-      res.setHeader('Content-Length', mp3.length);
+      res.setHeader('Transfer-Encoding', 'chunked');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('X-Voice', voice);
       res.statusCode = 200;
-      res.end(mp3);
+
+      await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          try { wsConnect.close(); } catch {}
+          if (!res.writableEnded) res.end();
+          reject(new Error('TTS timeout after 15s'));
+        }, 15000);
+
+        wsConnect.on('message', (data, isBinary) => {
+          if (isBinary) {
+            // Binary frame: header + audio bytes. Strip the 'Path:audio\r\n' header.
+            const separator = 'Path:audio\r\n';
+            const idx = data.indexOf(separator) + separator.length;
+            const audioData = data.subarray(idx);
+            if (audioData.length > 0 && !res.writableEnded) res.write(audioData);
+          } else {
+            const msg = data.toString();
+            if (msg.includes('Path:turn.end')) {
+              clearTimeout(timeout);
+              try { wsConnect.close(); } catch {}
+              if (!res.writableEnded) res.end();
+              resolve();
+            }
+          }
+        });
+
+        wsConnect.on('error', (err) => {
+          clearTimeout(timeout);
+          if (!res.writableEnded) res.end();
+          reject(err);
+        });
+
+        // Send SSML synthesis request
+        const requestId = crypto.randomBytes(16).toString('hex');
+        const safeText  = text.replace(/[<>&"']/g, c => ({ '<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&apos;' }[c]));
+        wsConnect.send(
+          `X-RequestId:${requestId}\r\nContent-Type:application/ssml+xml\r\nPath:ssml\r\n\r\n` +
+          `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xmlns:mstts="https://www.w3.org/2001/mstts" xml:lang="en-US">` +
+          `<voice name="${voice}"><prosody rate="default" pitch="default" volume="default">${safeText}</prosody></voice></speak>`
+        );
+      });
 
     } catch (e) {
-      cleanup();
       console.error('[Voice/Speak]', e.message);
-      res.statusCode = 500;
-      res.end(JSON.stringify({ ok: false, error: e.message }));
+      if (!res.headersSent) {
+        res.statusCode = 500;
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      } else if (!res.writableEnded) {
+        res.end();
+      }
     }
     return;
   }
@@ -1760,6 +1836,7 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ OpenClaw Native Web Interface API running on http://0.0.0.0:${PORT}`);
   console.log(`🔗 Gateway: ${GATEWAY_URL}`);
   console.log(`📡 Connected to ${Object.keys(agentSessions).length} agents`);
+  console.log(`🎙️ Whisper STT: ${whisperServerAvailable ? 'whisper-server (fast)' : 'whisper-cli fallback (no server on :8090)'}`);
 });
 
 // --- Chat v2: WebSocket server for frontend push ---
