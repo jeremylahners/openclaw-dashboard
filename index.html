@@ -22,7 +22,7 @@
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.8/dist/purify.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/apexcharts@3.45.1/dist/apexcharts.min.js"></script>
-  <link rel="stylesheet" href="css/all-styles.css?v=13">
+  <link rel="stylesheet" href="css/all-styles.css?v=20">
   <link rel="stylesheet" href="css/toast.css?v=3">
   <link rel="stylesheet" href="css/loading.css?v=3">
 </head>
@@ -123,6 +123,7 @@
         <h2 id="panelName">Isla</h2>
         <div class="role" id="panelRole">Chief of Staff</div>
       </div>
+      <button class="panel-expand" id="panelExpand" title="Expand chat">⤢</button>
       <button class="panel-close" id="panelClose">×</button>
     </div>
 
@@ -145,7 +146,7 @@
             <span id="wsStatus" style="font-size: 0.7rem; color: #555;">Connecting...</span>
           </div>
         </div>
-        <div class="chat-messages" id="chatMessages" style="flex: 1; overflow-y: auto; padding: 15px; min-height: 0;">
+        <div class="chat-messages" id="chatMessages" style="flex: 1; overflow-y: auto; overflow-x: hidden; padding: 15px; min-height: 0; max-width: 100%; box-sizing: border-box;">
           <div class="chat-loading" style="text-align: center; color: #666; padding: 20px;">Loading messages...</div>
         </div>
         <div class="chat-input-container" style="padding: 10px 15px; border-top: 1px solid #333; display: flex; gap: 10px; align-items: flex-end;">
@@ -420,6 +421,7 @@
     const sidePanel = document.getElementById('sidePanel');
     let agents = document.querySelectorAll('.agent'); // re-queried after config renders
     const panelClose = document.getElementById('panelClose');
+    const panelExpand = document.getElementById('panelExpand');
     // Note: tab elements are now built dynamically per-agent by buildTabsForAgent()
     const chatInput = document.getElementById('chatInput');
     const chatSend = document.getElementById('chatSend');
@@ -1567,6 +1569,42 @@
       const chatInput = document.getElementById('chatInput');
       if (chatInput) chatInput.blur();
     });
+
+    // Expand / collapse panel width toggle
+    function applyExpandState(expanded) {
+      if (expanded) {
+        sidePanel.classList.add('expanded');
+        // Clear any inline width set by the resize handle so CSS takes over
+        sidePanel.style.width = '';
+        if (panelExpand) {
+          panelExpand.textContent = '⤡';
+          panelExpand.title = 'Collapse chat';
+          panelExpand.classList.add('is-expanded');
+        }
+      } else {
+        sidePanel.classList.remove('expanded');
+        // Restore saved resize width, or default
+        const savedWidth = localStorage.getItem('sidePanelWidth');
+        if (savedWidth) sidePanel.style.width = savedWidth + 'px';
+        if (panelExpand) {
+          panelExpand.textContent = '⤢';
+          panelExpand.title = 'Expand chat';
+          panelExpand.classList.remove('is-expanded');
+        }
+      }
+      localStorage.setItem('sidePanelExpanded', expanded ? '1' : '0');
+    }
+
+    if (panelExpand) {
+      // Restore saved expand state on load (skip on mobile — already full-screen)
+      if (window.innerWidth > 768 && localStorage.getItem('sidePanelExpanded') === '1') {
+        applyExpandState(true);
+      }
+
+      panelExpand.addEventListener('click', () => {
+        applyExpandState(!sidePanel.classList.contains('expanded'));
+      });
+    }
 
     // Tab click handlers are now attached dynamically by buildTabsForAgent()
 
@@ -3049,12 +3087,17 @@
     let startWidth = 0;
 
     // Load saved width from localStorage
+    // Only restore saved width if not in expanded mode
     const savedWidth = localStorage.getItem('sidePanelWidth');
-    if (savedWidth) {
+    if (savedWidth && localStorage.getItem('sidePanelExpanded') !== '1') {
       sidePanel.style.width = savedWidth + 'px';
     }
 
     resizeHandle.addEventListener('mousedown', (e) => {
+      // If expanded, exit expanded mode when user starts a manual drag
+      if (sidePanel.classList.contains('expanded')) {
+        applyExpandState(false);
+      }
       isResizing = true;
       startX = e.clientX;
       startWidth = sidePanel.offsetWidth;
