@@ -34,14 +34,16 @@ const WHISPER_SERVER_URL = 'http://127.0.0.1:8090/inference';
 let whisperServerAvailable = false;
 
 // Check if whisper-server is running on startup (and periodically)
-function checkWhisperServer() {
+function checkWhisperServer(onDone) {
   const req = http.get('http://127.0.0.1:8090/health', { timeout: 2000 }, (res) => {
     whisperServerAvailable = res.statusCode === 200;
     res.resume();
+    if (onDone) onDone();
   });
-  req.on('error', () => { whisperServerAvailable = false; });
-  req.on('timeout', () => { req.destroy(); whisperServerAvailable = false; });
+  req.on('error', () => { whisperServerAvailable = false; if (onDone) onDone(); });
+  req.on('timeout', () => { req.destroy(); whisperServerAvailable = false; if (onDone) onDone(); });
 }
+// Run initial check; setInterval for periodic re-checks every 30s
 checkWhisperServer();
 setInterval(checkWhisperServer, 30000);
 
@@ -1836,7 +1838,10 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ OpenClaw Native Web Interface API running on http://0.0.0.0:${PORT}`);
   console.log(`🔗 Gateway: ${GATEWAY_URL}`);
   console.log(`📡 Connected to ${Object.keys(agentSessions).length} agents`);
-  console.log(`🎙️ Whisper STT: ${whisperServerAvailable ? 'whisper-server (fast)' : 'whisper-cli fallback (no server on :8090)'}`);
+  // Delay STT status log slightly so the async health check can resolve first
+  setTimeout(() => {
+    console.log(`🎙️ Whisper STT: ${whisperServerAvailable ? 'whisper-server/ggml-small.en (fast)' : 'whisper-cli fallback (no server on :8090)'}`);
+  }, 1000);
 });
 
 // --- Chat v2: WebSocket server for frontend push ---
