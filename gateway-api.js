@@ -35,8 +35,8 @@ let whisperServerAvailable = false;
 
 // Check if whisper-server is running on startup (and periodically)
 function checkWhisperServer() {
-  const req = http.get('http://127.0.0.1:8090/', { timeout: 2000 }, (res) => {
-    whisperServerAvailable = true;
+  const req = http.get('http://127.0.0.1:8090/health', { timeout: 2000 }, (res) => {
+    whisperServerAvailable = res.statusCode === 200;
     res.resume();
   });
   req.on('error', () => { whisperServerAvailable = false; });
