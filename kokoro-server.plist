@@ -1,0 +1,49 @@
+<!--
+  OpenClaw Kokoro TTS Server LaunchAgent
+  Runs kokoro-server.py as a persistent daemon for fast local neural TTS.
+
+  Install:
+    cp kokoro-server.plist ~/Library/LaunchAgents/com.openclaw.kokoro-server.plist
+    launchctl load ~/Library/LaunchAgents/com.openclaw.kokoro-server.plist
+
+  Uninstall:
+    launchctl unload ~/Library/LaunchAgents/com.openclaw.kokoro-server.plist
+    rm ~/Library/LaunchAgents/com.openclaw.kokoro-server.plist
+
+  Logs: /tmp/openclaw/kokoro-server.log
+-->
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.openclaw.kokoro-server</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/jeremylahners/.openclaw/workspace/office/.venv/bin/python</string>
+    <string>/Users/jeremylahners/.openclaw/workspace/office/kokoro-server.py</string>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/jeremylahners/.openclaw/workspace/office</string>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/openclaw/kokoro-server.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/tmp/openclaw/kokoro-server.log</string>
+</dict>
+</plist>
