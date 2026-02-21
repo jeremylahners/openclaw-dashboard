@@ -3404,7 +3404,7 @@
     // ============================================================
 
     const SILENCE_THRESHOLD = 8;   // avg frequency amplitude (0-255) below which = silence
-    const SILENCE_DURATION  = 1500; // ms of silence before end-of-utterance
+    const SILENCE_DURATION  = 800;  // ms of silence before end-of-utterance
 
     // --- State ---
     let voiceModeActive = false;
@@ -3425,6 +3425,7 @@
     let audioSource     = null;  // MediaStreamAudioSourceNode — reused across cycles
     let analyser        = null;  // AnalyserNode — reused across cycles
     let vadTimer        = null;
+    let bargeInTimer    = null;  // VAD loop that runs during TTS playback for interruption
     let lastSoundTime   = 0;
     let hasSpeech       = false;
     let voiceState      = 'idle'; // idle | listening | processing | speaking
@@ -3720,6 +3721,7 @@
     function playNextTTS() {
       if (ttsQueue.length === 0) {
         ttsPlaying = false;
+        stopBargeInMonitor();
         if (voiceModeActive) setTimeout(() => startListening(), 400);
         return;
       }
@@ -3731,7 +3733,10 @@
       el.onerror = () => { console.error('[TTS] Audio error'); playNextTTS(); };
       el.src = url;
       el.load();
-      el.play().catch(e => {
+      el.play().then(() => {
+        // Start barge-in monitor once audio is actually playing
+        if (voiceModeActive) startBargeInMonitor();
+      }).catch(e => {
         console.error('[TTS] Play failed:', e.message);
         playNextTTS();
       });
@@ -3740,8 +3745,36 @@
     function stopTTS() {
       ttsQueue = [];
       ttsPlaying = false;
+      stopBargeInMonitor();
       const el = getTTSEl();
       if (el && !el.paused) { el.pause(); el.src = ''; }
+    }
+
+    // --- Barge-in: monitor mic while TTS plays, interrupt on speech ---
+    function startBargeInMonitor() {
+      stopBargeInMonitor();
+      if (!analyser) return;
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+      let consecutiveHits = 0; // require a few consecutive frames to avoid false triggers
+      bargeInTimer = setInterval(() => {
+        if (!voiceModeActive || !ttsPlaying) { stopBargeInMonitor(); return; }
+        analyser.getByteFrequencyData(dataArray);
+        const volume = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
+        if (volume > SILENCE_THRESHOLD) {
+          consecutiveHits++;
+          if (consecutiveHits >= 3) { // 300ms of speech → barge-in
+            console.log('[Voice] Barge-in detected (vol=' + volume.toFixed(1) + '), interrupting TTS');
+            stopTTS();
+            startListening();
+          }
+        } else {
+          consecutiveHits = 0;
+        }
+      }, 100);
+    }
+
+    function stopBargeInMonitor() {
+      if (bargeInTimer) { clearInterval(bargeInTimer); bargeInTimer = null; }
     }
 
     // speakResponse: used by appendMessageEl for completed (non-streaming) messages
