@@ -3404,7 +3404,7 @@
     // ============================================================
 
     const SILENCE_THRESHOLD = 8;   // avg frequency amplitude (0-255) below which = silence
-    const SILENCE_DURATION  = 800;  // ms of silence before end-of-utterance
+    const SILENCE_DURATION  = 650;  // ms of silence before end-of-utterance (tightened for whisper-server)
 
     // --- State ---
     let voiceModeActive = false;
