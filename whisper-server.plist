@@ -1,0 +1,52 @@
+<!--
+  OpenClaw whisper-server LaunchAgent
+  Runs whisper-server as a persistent daemon for fast STT transcription.
+
+  Install:
+    cp whisper-server.plist ~/Library/LaunchAgents/com.openclaw.whisper-server.plist
+    launchctl load ~/Library/LaunchAgents/com.openclaw.whisper-server.plist
+
+  Uninstall:
+    launchctl unload ~/Library/LaunchAgents/com.openclaw.whisper-server.plist
+    rm ~/Library/LaunchAgents/com.openclaw.whisper-server.plist
+
+  Logs: /tmp/openclaw/whisper-server.log
+-->
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.openclaw.whisper-server</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/whisper-server</string>
+    <string>-m</string>
+    <string>/Users/jeremylahners/.cache/whisper-cpp/models/ggml-small.en.bin</string>
+    <string>--port</string>
+    <string>8090</string>
+    <string>--convert</string>
+    <string>--flash-attn</string>
+    <string>--host</string>
+    <string>127.0.0.1</string>
+    <string>-t</string>
+    <string>4</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/jeremylahners/.openclaw/workspace/office</string>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/openclaw/whisper-server.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/tmp/openclaw/whisper-server.log</string>
+</dict>
+</plist>
