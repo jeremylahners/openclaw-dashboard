@@ -608,9 +608,7 @@
 
     /* Side Panel */
     .side-panel {
-      position: fixed;
-      right: 0;
-      top: 0;
+      position: relative;
       width: 400px;
       min-width: 300px;
       max-width: 800px;
@@ -620,8 +618,16 @@
       border-left: 1px solid #333;
       display: flex;
       flex-direction: column;
-      transition: transform 0.3s, width 0.3s, min-width 0.3s;
+      transition: transform 0.3s, width 0.3s, min-width 0.3s, position 0.3s;
       overflow: hidden;
+    }
+
+    /* Expanded state: overlays office view */
+    .side-panel.expanded {
+      position: fixed;
+      right: 0;
+      top: 0;
+      height: 100vh;
     }
 
     .side-panel.hidden {

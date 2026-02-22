@@ -22,7 +22,7 @@
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.8/dist/purify.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/apexcharts@3.45.1/dist/apexcharts.min.js"></script>
-  <link rel="stylesheet" href="css/all-styles.css?v=20">
+  <link rel="stylesheet" href="css/all-styles.css?v=26">
   <link rel="stylesheet" href="css/toast.css?v=3">
   <link rel="stylesheet" href="css/loading.css?v=3">
 </head>
@@ -3113,6 +3113,7 @@
       const deltaX = startX - e.clientX; // Dragging left increases width
       const newWidth = Math.max(300, Math.min(800, startWidth + deltaX));
       sidePanel.style.width = newWidth + 'px';
+      // Note: placeholder width will sync on mouseup via saved width
     });
 
     document.addEventListener('mouseup', () => {

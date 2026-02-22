@@ -1,15 +1,15 @@
 // OpenClaw Office - Service Worker
 // Handles push notifications, offline caching, and PWA functionality
 
-const CACHE_NAME = 'openclaw-office-v12';
-const CACHE_VERSION = '12.0.0';
+const CACHE_NAME = 'openclaw-office-v18';
+const CACHE_VERSION = '18.0.0';
 
 // Files to cache for offline access
 const urlsToCache = [
   '/',
   '/index.html',
   '/manifest.json',
-  '/css/all-styles.css?v=20',
+  '/css/all-styles.css?v=26',
   '/css/toast.css',
   '/css/loading.css',
   // External dependencies
