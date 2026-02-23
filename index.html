@@ -2340,6 +2340,12 @@
       const meta = groupEl.querySelector('.comms-meta');
       meta.textContent = `${count} msg${count !== 1 ? 's' : ''} \u00B7 ${getRelativeTime(message.timestamp)}`;
       setTimeout(() => renderPendingCharts(), 50);
+      
+      // TTS for agent-routed responses (when in voice mode)
+      // This ensures bot responses from grouped agent messages get voice conversion
+      if (message.isBot && voiceModeActive && currentAgentKey) {
+        speakResponse(message.content || '', currentAgentKey);
+      }
     }
 
     function appendOrGroupMessage(message) {
