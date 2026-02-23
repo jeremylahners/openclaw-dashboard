@@ -77,11 +77,14 @@
 
   <!-- Left Info Panel -->
   <div class="left-info-panel">
-    <!-- Tab Navigation -->
-    <div class="left-panel-tabs">
-      <div class="left-tab active" data-tab="priorities">🎯 Priorities</div>
-      <div class="left-tab" data-tab="standup">📋 Standup</div>
-      <div class="left-tab" data-tab="interactions">🔗 Activity</div>
+    <!-- Tab Navigation - Dropdown -->
+    <div class="left-panel-header">
+      <select id="tabSelector" class="tab-dropdown">
+        <option value="priorities">🎯 Priorities</option>
+        <option value="standup">📋 Standup</option>
+        <option value="interactions">🔗 Activity</option>
+        <option value="tokens">💾 Tokens</option>
+      </select>
       <button class="settings-btn" id="settingsBtn" title="Notification Settings">⚙️</button>
     </div>
 
@@ -110,6 +113,17 @@
       <div class="tab-header">Recent Activity</div>
       <div id="interactionFeed">
         <div class="no-interactions">No recent interactions</div>
+      </div>
+    </div>
+
+    <!-- Token Usage Tab -->
+    <div class="left-tab-content" id="tab-tokens">
+      <div class="tab-header">
+        Token Usage
+        <span class="updated" id="tokensUpdated"></span>
+      </div>
+      <div id="tokenUsageContent">
+        <div class="loading">Loading token data...</div>
       </div>
     </div>
   </div>
@@ -931,32 +945,42 @@
     fetchStandup();
 
     // Left Panel Tab Switching
-    document.querySelectorAll('.left-tab').forEach(tab => {
-      tab.addEventListener('click', () => {
-        const targetTab = tab.dataset.tab;
-
-        // Update active tab
-        document.querySelectorAll('.left-tab').forEach(t => t.classList.remove('active'));
-        tab.classList.add('active');
+    // Dropdown tab selection
+    const tabSelector = document.getElementById('tabSelector');
+    if (tabSelector) {
+      tabSelector.addEventListener('change', (e) => {
+        const targetTab = e.target.value;
 
         // Update active content
         document.querySelectorAll('.left-tab-content').forEach(c => c.classList.remove('active'));
-        document.getElementById(`tab-${targetTab}`).classList.add('active');
+        const contentPane = document.getElementById(`tab-${targetTab}`);
+        if (contentPane) {
+          contentPane.classList.add('active');
+
+          // Lazy-load custom tab data if needed (for agent tabs)
+          if (contentPane.dataset.source && !contentPane.dataset.loaded) {
+            const agentKey = contentPane.dataset.agent;
+            if (agentKey) loadCustomTabData(agentKey, contentPane.dataset.source, contentPane);
+          }
+        }
 
         // Save preference
         localStorage.setItem('leftPanelTab', targetTab);
 
-        // On mobile, blur chat input to dismiss keyboard when clicking left panel tabs
+        // On mobile, blur chat input to dismiss keyboard
         const chatInput = document.getElementById('chatInput');
         if (chatInput) chatInput.blur();
       });
-    });
 
-    // Restore last active tab
-    const savedTab = localStorage.getItem('leftPanelTab');
-    if (savedTab) {
-      const tab = document.querySelector(`.left-tab[data-tab="${savedTab}"]`);
-      if (tab) tab.click();
+      // Restore last active tab
+      const savedTab = localStorage.getItem('leftPanelTab');
+      if (savedTab) {
+        tabSelector.value = savedTab;
+        tabSelector.dispatchEvent(new Event('change'));
+      } else {
+        // Default to first option
+        tabSelector.dispatchEvent(new Event('change'));
+      }
     }
 
     // Folder state persistence

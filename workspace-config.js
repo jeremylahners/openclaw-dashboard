@@ -47,7 +47,7 @@ function loadConfig() {
     memoryDir: path.join(workspaceRoot, 'memory', 'agents'),
     statusFile: path.join(workspaceRoot, 'memory', 'agent-status.json'),
     interactionsFile: path.join(workspaceRoot, 'memory', 'agent-interactions.json'),
-    agentFilesDir: path.join(workspaceRoot, 'files', 'agents'),
+    agentFilesDir: path.join(workspaceRoot, 'agents'),
     todayFile: path.join(workspaceRoot, 'TODAY.md'),
   };
 
