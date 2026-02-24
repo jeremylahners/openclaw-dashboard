@@ -104,14 +104,102 @@ const { loadConfig, buildFrontendConfig } = require('./workspace-config.js');
 const wsConfig = loadConfig();
 const { agentSessions, sessionToAgent: wsSessionToAgent, agentChannels, paths: wsPaths } = wsConfig;
 
+// ============================================================
+// STARTUP GUARD — exit if a healthy instance is already running
+// ============================================================
+// Philosophy: DON'T kill existing processes. If a healthy instance is already
+// listening on our port, this is a duplicate spawn (launchd race, manual start, etc).
+// Exit cleanly with code 0 so launchd does NOT respawn us (KeepAlive.SuccessfulExit=false
+// means launchd only restarts on non-zero exit).
+const PIDFILE = '/tmp/office-backend.pid';
+const { execSync } = require('child_process');
+
+function isPortListening(port) {
+  try {
+    const result = execSync(`/usr/sbin/lsof -i :${port} -sTCP:LISTEN -t 2>/dev/null`, { encoding: 'utf8' }).trim();
+    return result ? result.split('\n').map(p => parseInt(p, 10)).filter(p => p !== process.pid) : [];
+  } catch { return []; }
+}
+
+// Check if another healthy instance is already running
+const existingPids = isPortListening(8081);
+if (existingPids.length > 0) {
+  console.log(`[STARTUP] Port 8081 already has a healthy listener (pids: ${existingPids.join(', ')}). Exiting cleanly.`);
+  // Exit with 0 — tells launchd "successful exit, don't restart me"
+  process.exit(0);
+}
+
+// Step 4: Write our pidfile atomically (write to tmp, rename)
+const pidTmpFile = PIDFILE + '.' + process.pid;
+fs.writeFileSync(pidTmpFile, String(process.pid));
+fs.renameSync(pidTmpFile, PIDFILE);
+console.log(`[STARTUP] PID ${process.pid} written to ${PIDFILE}`);
+
+// ============================================================
+// GRACEFUL SHUTDOWN — clean pidfile, close server
+// ============================================================
+function gracefulShutdown(signal) {
+  console.log(`[SHUTDOWN] Received ${signal}, cleaning up...`);
+  try { fs.unlinkSync(PIDFILE); } catch {}
+  if (gwReconnectTimer) { clearTimeout(gwReconnectTimer); gwReconnectTimer = null; }
+  if (gwPingInterval) { clearInterval(gwPingInterval); gwPingInterval = null; }
+  if (agentPollInterval) { clearInterval(agentPollInterval); agentPollInterval = null; }
+  if (gwSocket) { try { gwSocket.removeAllListeners(); gwSocket.terminate(); } catch {} }
+  if (typeof server !== 'undefined' && server.close) {
+    server.close(() => process.exit(0));
+    // Force exit after 5 seconds
+    setTimeout(() => process.exit(0), 5000);
+  } else {
+    process.exit(0);
+  }
+}
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
 // Prevent process crashes from unhandled errors — log and continue
 process.on('uncaughtException', (err) => {
+  // EADDRINUSE means another instance is already healthy — exit with 0
+  // so launchd does NOT restart us (KeepAlive.SuccessfulExit=false)
+  if (err.code === 'EADDRINUSE') {
+    console.log(`[STARTUP] Port ${err.port || 8081} already in use — another instance is running. Exiting cleanly.`);
+    try { fs.unlinkSync(PIDFILE); } catch {}
+    process.exit(0);
+    return;
+  }
   console.error('[FATAL] Uncaught exception (kept alive):', err.message);
   console.error(err.stack);
 });
 process.on('unhandledRejection', (reason) => {
   console.error('[FATAL] Unhandled rejection (kept alive):', reason);
 });
+
+// ============================================================
+// LOG ROTATION — prevent unbounded log growth during long runs
+// Checks every hour; rotates if log exceeds 50,000 lines
+// ============================================================
+const LOG_ROTATION_INTERVAL = 60 * 60 * 1000; // 1 hour
+const LOG_MAX_LINES = 50000;
+const LOG_KEEP_LINES = 5000;
+
+function rotateLogIfNeeded(logPath) {
+  try {
+    if (!fs.existsSync(logPath)) return;
+    const content = fs.readFileSync(logPath, 'utf8');
+    const lines = content.split('\n');
+    if (lines.length > LOG_MAX_LINES) {
+      const kept = lines.slice(-LOG_KEEP_LINES).join('\n');
+      fs.writeFileSync(logPath, kept);
+      console.log(`[LOG-ROTATE] ${logPath}: ${lines.length} lines → ${LOG_KEEP_LINES} lines`);
+    }
+  } catch (e) {
+    // Non-fatal — don't crash over log rotation
+  }
+}
+
+setInterval(() => {
+  rotateLogIfNeeded('/tmp/office-backend.log');
+  rotateLogIfNeeded('/tmp/office-backend.err');
+}, LOG_ROTATION_INTERVAL);
 
 const MEMORY_DIR = wsPaths.memoryDir;
 const INTERACTIONS_FILE = wsPaths.interactionsFile;
@@ -475,7 +563,8 @@ function gwConnect() {
     }
   });
 
-  gwSocket.on('close', () => {
+  gwSocket.on('close', (code, reason) => {
+    console.log(`[GW] WebSocket closed (code=${code}, reason=${reason || 'none'})`);
     gwCleanup();
     setGwConnectionState('reconnecting');
     gwScheduleReconnect();
@@ -483,8 +572,8 @@ function gwConnect() {
 
   gwSocket.on('error', (e) => {
     console.error('[GW] WebSocket error:', e.message);
-    setGwConnectionState('failed');
-    // 'close' will fire after 'error', so reconnect happens there
+    // Don't set state to 'failed' here — 'close' fires right after and handles reconnect.
+    // Setting 'failed' then 'reconnecting' caused the frontend to briefly show disconnected.
   });
 }
 
@@ -2572,6 +2661,17 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+// Handle EADDRINUSE at server level — exit cleanly so launchd won't respawn
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.log(`[STARTUP] Port ${PORT} in use — another instance is healthy. Exiting cleanly.`);
+    try { fs.unlinkSync(PIDFILE); } catch {}
+    process.exit(0);
+    return;
+  }
+  console.error('[SERVER] Error:', err.message);
+});
+
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ OpenClaw Native Web Interface API running on http://0.0.0.0:${PORT}`);
   console.log(`🔗 Gateway: ${GATEWAY_URL}`);
@@ -2702,9 +2802,9 @@ wss.on('connection', (ws) => {
     }
   });
 
-  ws.on('close', () => {
+  ws.on('close', (code, reason) => {
     wsClients.delete(client);
-    console.log('[WS-Chat] Client disconnected, total:', wsClients.size);
+    console.log(`[WS-Chat] Client disconnected (code=${code}, reason=${reason ? reason.toString() : 'none'}), total: ${wsClients.size}`);
   });
 });
 

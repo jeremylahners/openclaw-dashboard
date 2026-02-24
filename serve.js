@@ -120,12 +120,16 @@ server.on('upgrade', (req, socket, head) => {
       backendSocket.pipe(socket);
     });
 
-    // Connection timeout — if backend is restarting, fail fast so client retries
-    backendSocket.setTimeout(5000, () => {
-      console.error('[WS] Backend connection timeout — backend may be restarting');
-      backendSocket.destroy();
-      socket.end();
-    });
+    // Connection timeout — only for initial connect, not idle
+    // Once connected, clear the timeout so idle WS connections aren't killed
+    const connectTimeout = setTimeout(() => {
+      if (!backendSocket.writable) {
+        console.error('[WS] Backend connection timeout — backend may be restarting');
+        backendSocket.destroy();
+        socket.end();
+      }
+    }, 5000);
+    backendSocket.once('connect', () => clearTimeout(connectTimeout));
 
     backendSocket.on('error', (e) => {
       // Only log non-routine errors (ECONNRESET during backend restart is expected)
