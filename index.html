@@ -2099,15 +2099,12 @@
       };
 
       chatWs.onclose = () => {
-        const jitter = Math.random() * 1000; // Add jitter to prevent thundering herd
-        const delay = chatWsReconnectDelay + jitter;
-        console.log(`[Chat-WS] Disconnected, reconnecting in ${(delay / 1000).toFixed(1)}s (backoff: ${chatWsReconnectDelay}ms)`);
+        console.log('[Chat-WS] Disconnected, will retry in 3s');
         wsVoiceSubscribed = false; // Server-side TTS lost — fall back to HTTP on next delta
         const wsEl = document.getElementById('wsStatus');
         if (wsEl) { wsEl.textContent = 'Reconnecting...'; wsEl.style.color = '#f59e0b'; }
-        chatWsReconnectTimer = setTimeout(chatWsConnect, delay);
-        // Exponential backoff, capped at 30s
-        chatWsReconnectDelay = Math.min(chatWsReconnectDelay * 1.5, CHAT_WS_RECONNECT_MAX);
+        // Simple 3-second retry (no exponential backoff for now — backend stability first)
+        chatWsReconnectTimer = setTimeout(chatWsConnect, 3000);
       };
 
       chatWs.onerror = (e) => {
