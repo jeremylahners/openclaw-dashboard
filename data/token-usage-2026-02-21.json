@@ -1,0 +1,14 @@
+{
+  "date": "2026-02-21",
+  "generatedAt": "2026-02-21T23:30:00Z",
+  "totalTokens": 42100,
+  "byAgent": {
+    "isla": 17200,
+    "lena": 8100,
+    "marcus": 6500,
+    "remy": 5200,
+    "harper": 3000,
+    "sage": 1900,
+    "julie": 1200
+  }
+}

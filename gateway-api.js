@@ -29,6 +29,11 @@ const AGENT_VOICES = {
 const DEFAULT_VOICE = 'en-US-JennyNeural';
 const WHISPER_MODEL = '/Users/jeremylahners/.cache/whisper-cpp/models/ggml-base.en.bin';
 const WHISPER_BIN = '/opt/homebrew/bin/whisper-cli';
+// Whisper best_of: number of candidate samples. Higher = more accurate, slower.
+// Default 1 for low latency; set WHISPER_BEST_OF=3 for accuracy.
+const WHISPER_BEST_OF = parseInt(process.env.WHISPER_BEST_OF, 10) || 1;
+// Whisper temperature: 0 = greedy (fastest), 0.2 = slight randomness (reduces hallucination loops)
+const WHISPER_TEMPERATURE = parseFloat(process.env.WHISPER_TEMPERATURE) || (WHISPER_BEST_OF > 1 ? 0.2 : 0);
 
 // Post-processing corrections for common Whisper misrecognitions.
 // Handles names, local terms, and proper nouns that the model frequently mangles.
@@ -178,35 +183,77 @@ function gwNextId() { return `req-${++gwRequestId}`; }
 const lastMessageTimestamps = new Map(); // agentKey -> timestamp
 
 // Poll sessions.history to detect agent-to-agent messages
+// Legacy wrapper: polls ALL agents (used by any code that calls pollAgentSessions directly)
 async function pollAgentSessions() {
+  return pollAgentSessionsFiltered(agentSessions);
+}
+
+// Per-agent last-activity tracking for smart polling
+const agentLastActivity = new Map(); // agentKey → timestamp
+
+// Mark an agent as recently active (called when messages are sent/received)
+function markAgentActive(agentKey) {
+  agentLastActivity.set(agentKey, Date.now());
+}
+
+// Smart polling wrapper: skip dormant agents (no activity in last 5 minutes)
+// unless it's a forced reconciliation cycle (every 5th poll)
+let pollCycleCount = 0;
+const AGENT_DORMANT_THRESHOLD = 5 * 60 * 1000; // 5 minutes
+
+async function smartPollAgentSessions() {
+  pollCycleCount++;
+  const forceReconcile = (pollCycleCount % 5 === 0); // Every 5th cycle, poll all agents
+  const now = Date.now();
+
+  // Build filtered list of agents to poll
+  const agentsToPoll = {};
   for (const [agentKey, sessionKey] of Object.entries(agentSessions)) {
+    if (forceReconcile) {
+      agentsToPoll[agentKey] = sessionKey;
+    } else {
+      const lastActive = agentLastActivity.get(agentKey) || 0;
+      if ((now - lastActive) <= AGENT_DORMANT_THRESHOLD) {
+        agentsToPoll[agentKey] = sessionKey;
+      }
+    }
+  }
+
+  const totalAgents = Object.keys(agentSessions).length;
+  const polledAgents = Object.keys(agentsToPoll).length;
+  if (polledAgents < totalAgents) {
+    console.log(`[GW] Smart poll: ${polledAgents}/${totalAgents} agents (${totalAgents - polledAgents} dormant, skipped)`);
+  }
+
+  // Call original pollAgentSessions with the filtered set
+  await pollAgentSessionsFiltered(agentsToPoll);
+}
+
+// Filtered version of pollAgentSessions — polls only the provided agents
+async function pollAgentSessionsFiltered(agentsToPoll) {
+  for (const [agentKey, sessionKey] of Object.entries(agentsToPoll)) {
     try {
       const history = await gwRequest('chat.history', {
         sessionKey,
         limit: 10
       });
-      
+
       if (!history || !history.messages) continue;
-      
+
       const lastKnownTimestamp = lastMessageTimestamps.get(agentKey) || 0;
       let newLatestTimestamp = lastKnownTimestamp;
-      
-      // Process messages newer than last known
+
       for (const msg of history.messages) {
         const msgTimestamp = msg.timestamp || 0;
         if (msgTimestamp <= lastKnownTimestamp) continue;
 
-        // Found a new message!
         if (msg.role === 'user') {
           const text = extractMessageText(msg);
           if (!text || NOISE_REPLIES.test(text.trim()) || isSystemContextMessage(text)) continue;
 
-          // Check provenance for inter-session (agent-to-agent) messages
           const provenance = msg.provenance || msg.inputProvenance || null;
           const isInterSession = provenance?.kind === 'inter_session';
 
-          // If no provenance or not inter-session, this is likely Jeremy's message
-          // Skip if already stored from dashboard send
           if (!isInterSession) {
             const recentMsgs = chatDb.getRecentUserMessagesForAgent(agentKey, msgTimestamp - 60000);
             const normalizedText = text.replace(/\s+/g, ' ').trim();
@@ -217,7 +264,6 @@ async function pollAgentSessions() {
             if (alreadyStored) continue;
           }
 
-          // Extract sender from provenance sourceSessionKey or fall back to text patterns
           let senderName = null;
           if (provenance?.sourceSessionKey) {
             const match = provenance.sourceSessionKey.match(/^agent:(\w+):/);
@@ -231,7 +277,6 @@ async function pollAgentSessions() {
             console.log(`[GW] Provenance for ${agentKey}: kind=${provenance.kind}, source=${provenance.sourceSessionKey || 'none'}`);
           }
 
-          // Store in SQLite with metadata
           const idempotencyKey = `poll-user-${agentKey}-${msgTimestamp}`;
           const metadata = {
             source: isInterSession ? 'agent' : 'user',
@@ -242,18 +287,19 @@ async function pollAgentSessions() {
 
           if (!result.duplicate) {
             console.log(`[GW] 📨 New incoming message for ${agentKey}: "${text.substring(0, 50)}..."`);
+            markAgentActive(agentKey); // Mark active on new message
 
             const clientMsg = formatMessageForClient({
               seq: result.seq, agent: agentKey, role: 'user', content: text, timestamp: msgTimestamp, metadata
             });
-            
+
             broadcastMessage(agentKey, clientMsg);
           }
         }
-        
+
         newLatestTimestamp = Math.max(newLatestTimestamp, msgTimestamp);
       }
-      
+
       if (newLatestTimestamp > lastKnownTimestamp) {
         lastMessageTimestamps.set(agentKey, newLatestTimestamp);
       }
@@ -269,13 +315,36 @@ function startAgentMessagePolling() {
     // Already polling — don't stack another interval
     return;
   }
-  console.log('[GW] Starting agent message polling (every 3 seconds)...');
+  // Poll every 30 seconds for reconciliation (agent-to-agent comms, external messages)
+  // NOT for realtime thinking/responses (event stream handles that via chat.subscribe)
+  // Reduced from 3s → 30s: ~90% reduction in polling RPC calls (~350/hr vs ~3,200/hr)
+  console.log('[GW] Starting agent message polling (every 30 seconds, smart-skip dormant)...');
 
-  // Initial sync
-  pollAgentSessions();
+  // Initial sync — mark all agents as active initially
+  for (const agentKey of Object.keys(agentSessions)) {
+    markAgentActive(agentKey);
+  }
+  smartPollAgentSessions();
 
-  // Poll every 3 seconds — stored so we can clear on shutdown
-  agentPollInterval = setInterval(pollAgentSessions, 3000);
+  // Poll every 30 seconds — stored so we can clear on shutdown
+  agentPollInterval = setInterval(smartPollAgentSessions, 30000);
+}
+
+// ============================================================
+// GATEWAY CONNECTION STATE — broadcast to frontend clients
+// ============================================================
+let gwConnectionState = 'connecting'; // 'connected', 'reconnecting', 'failed'
+
+function setGwConnectionState(state) {
+  if (gwConnectionState === state) return; // no-op if unchanged
+  gwConnectionState = state;
+  console.log(`[GW] Connection state: ${state}`);
+  // Broadcast to all browser clients
+  broadcastToAllClients({
+    type: 'gateway_state',
+    state: gwConnectionState,
+    timestamp: Date.now()
+  });
 }
 
 function gwCleanup() {
@@ -340,10 +409,15 @@ function gwConnect() {
   });
 
   gwSocket.on('open', () => {
-    console.log('[GW] WebSocket open, sending connect...');
+    console.log('[GW] WebSocket open, waiting for connect.challenge...');
     // Reset backoff on successful open
     gwReconnectDelay = GW_RECONNECT_MIN;
+    setGwConnectionState('connecting');
+    // Don't send connect yet — wait for the connect.challenge event
+  });
 
+  function gwSendConnect() {
+    console.log('[GW] Sending connect request...');
     const connId = gwNextId();
     gwSendRaw({
       type: 'req', id: connId, method: 'connect',
@@ -359,6 +433,7 @@ function gwConnect() {
       resolve: (payload) => {
         gwConnected = true;
         console.log('[GW] Connected!', payload.server?.version);
+        setGwConnectionState('connected');
 
         // Start keepalive pings
         gwStartPing();
@@ -371,11 +446,18 @@ function gwConnect() {
         gwSocket.close();
       }
     });
-  });
+  }
 
   gwSocket.on('message', (data) => {
     let frame;
     try { frame = JSON.parse(data.toString()); } catch { return; }
+
+    // Handle connect.challenge — must reply with connect request
+    if (frame.type === 'event' && frame.event === 'connect.challenge') {
+      console.log('[GW] Received connect.challenge, nonce:', frame.payload?.nonce);
+      gwSendConnect();
+      return;
+    }
 
     // Response to a request
     if (frame.type === 'res' && frame.id) {
@@ -395,11 +477,13 @@ function gwConnect() {
 
   gwSocket.on('close', () => {
     gwCleanup();
+    setGwConnectionState('reconnecting');
     gwScheduleReconnect();
   });
 
   gwSocket.on('error', (e) => {
     console.error('[GW] WebSocket error:', e.message);
+    setGwConnectionState('failed');
     // 'close' will fire after 'error', so reconnect happens there
   });
 }
@@ -487,6 +571,166 @@ function extractSenderFromText(text, knownAgentKeys, recipientKey) {
   return null;
 }
 
+// ============================================================
+// Server-side clause extraction for streaming TTS
+// ============================================================
+function extractClausesForVoice(text) {
+  const clauses = [];
+  const parts = text.split(/(?<=[,;:\u2014\u2013])\s+|(?<=[.!?])\s+/);
+  let buffer = '';
+  for (const part of parts) {
+    buffer += (buffer ? ' ' : '') + part;
+    const wordCount = buffer.trim().split(/\s+/).length;
+    const endsWithPause = /[,;:\u2014\u2013.!?]$/.test(buffer.trim());
+    if ((wordCount >= 4 && endsWithPause) || wordCount >= 8) {
+      const clause = buffer.trim();
+      if (clause.length >= 3) clauses.push(clause);
+      buffer = '';
+    }
+  }
+  return clauses;
+}
+
+function stripMarkdownForTTS(text) {
+  return text
+    .replace(/```[\s\S]*?```/g, 'code block')
+    .replace(/`[^`]+`/g, '')
+    .replace(/#{1,6}\s/g, '')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/^[-*+]\s/gm, '')
+    .replace(/^\d+\.\s/gm, '')
+    .replace(/^>\s/gm, '')
+    .replace(/\n{2,}/g, '. ')
+    .replace(/\n/g, ' ')
+    .trim();
+}
+
+// ============================================================
+// WebSocket TTS handler — manual request
+// ============================================================
+async function handleVoiceTTS(client, agent, text) {
+  const voice = AGENT_VOICES[agent] || DEFAULT_VOICE;
+  const audioId = crypto.randomBytes(8).toString('hex');
+
+  try {
+    // Clean text for TTS
+    const cleanText = stripMarkdownForTTS(text);
+    if (!cleanText.trim()) return;
+
+    // Send audio start header
+    client.ws.send(JSON.stringify({
+      type: 'tts_audio_start',
+      id: audioId,
+      format: 'wav',
+      agent
+    }));
+
+    // Synthesize via Kokoro or Edge TTS
+    let audioBuffer;
+    if (kokoroAvailable) {
+      const kokoroVoice = { 'isla': 'af_heart', 'lena': 'af_bella' }[agent] || 'af_heart';
+      const body = JSON.stringify({
+        model: 'kokoro',
+        input: cleanText.substring(0, 3000),
+        voice: kokoroVoice,
+        response_format: 'wav'
+      });
+
+      audioBuffer = await new Promise((resolve, reject) => {
+        const chunks = [];
+        const req = http.request(KOKORO_SERVER_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(body)
+          },
+          timeout: 10000
+        }, (res) => {
+          res.on('data', d => chunks.push(d));
+          res.on('end', () => resolve(Buffer.concat(chunks)));
+        });
+        req.on('error', reject);
+        req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
+        req.end(body);
+      });
+    } else {
+      // Edge TTS fallback
+      const tts = new EdgeTTS({
+        voice,
+        lang: 'en-US',
+        outputFormat: 'audio-24khz-96kbitrate-mono-mp3'
+      });
+
+      const wsConnect = await tts._connectWebSocket();
+      const chunks = [];
+
+      audioBuffer = await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          try { wsConnect.close(); } catch {}
+          reject(new Error('TTS timeout'));
+        }, 15000);
+
+        wsConnect.on('message', (data, isBinary) => {
+          if (isBinary) {
+            const separator = 'Path:audio\r\n';
+            const idx = data.indexOf(separator) + separator.length;
+            const audioData = data.subarray(idx);
+            if (audioData.length > 0) chunks.push(audioData);
+          } else {
+            const msg = data.toString();
+            if (msg.includes('Path:turn.end')) {
+              clearTimeout(timeout);
+              try { wsConnect.close(); } catch {}
+              resolve(Buffer.concat(chunks));
+            }
+          }
+        });
+
+        wsConnect.on('error', (err) => {
+          clearTimeout(timeout);
+          reject(err);
+        });
+
+        const requestId = crypto.randomBytes(16).toString('hex');
+        const safeText = cleanText.replace(/[<>&"']/g, c =>
+          ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' }[c])
+        );
+        wsConnect.send(
+          `X-RequestId:${requestId}\r\nContent-Type:application/ssml+xml\r\nPath:ssml\r\n\r\n` +
+          `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xmlns:mstts="https://www.w3.org/2001/mstts" xml:lang="en-US">` +
+          `<voice name="${voice}"><prosody rate="default" pitch="default" volume="default">${safeText}</prosody></voice></speak>`
+        );
+      });
+    }
+
+    // Send binary audio
+    if (audioBuffer && audioBuffer.length > 0) {
+      client.ws.send(audioBuffer);
+    }
+
+    // Send audio end
+    client.ws.send(JSON.stringify({
+      type: 'tts_audio_end',
+      id: audioId,
+      agent
+    }));
+
+  } catch (e) {
+    console.error('[WS-Voice] TTS synthesis failed:', e.message);
+    client.ws.send(JSON.stringify({
+      type: 'tts_audio_error',
+      id: audioId,
+      agent,
+      error: e.message
+    }));
+  }
+}
+
+// ============================================================
+// Gateway event handler with server-side streaming TTS
+// ============================================================
 function handleGatewayChatEvent(payload) {
   const sessionKey = payload.sessionKey;
   const agent = sessionToAgent[sessionKey];
@@ -549,7 +793,48 @@ function handleGatewayChatEvent(payload) {
     const text = extractMessageText(payload.message);
     if (!text) return;
     streamingAccumulator.set(sessionKey, text);
+    markAgentActive(agent); // Agent is actively responding
     broadcastStreaming(agent, { type: 'stream_delta', agent, text });
+
+    // Server-side TTS streaming for voice-mode clients
+    const voiceClients = [...wsClients].filter(c =>
+      c.voiceMode &&
+      c.voiceAgent === agent &&
+      c.ws.readyState === 1
+    );
+
+    if (voiceClients.length > 0) {
+      // Track accumulated text per agent
+      if (!voiceStreamAccumulators.has(sessionKey)) {
+        voiceStreamAccumulators.set(sessionKey, { text: '', cursor: 0 });
+      }
+
+      const acc = voiceStreamAccumulators.get(sessionKey);
+      acc.text = text;
+
+      // Extract new clauses since last cursor
+      const cleanText = stripMarkdownForTTS(text);
+      const newText = cleanText.slice(acc.cursor);
+
+      if (newText.length > 0) {
+        const clauses = extractClausesForVoice(newText);
+
+        if (clauses.length > 0) {
+          // Synthesize each clause and send to voice clients
+          let searchFrom = 0;
+          for (const clause of clauses) {
+            const idx = newText.indexOf(clause, searchFrom);
+            if (idx === -1) continue;
+
+            // Synthesize this clause
+            synthesizeAndSendClause(agent, clause, voiceClients);
+
+            searchFrom = idx + clause.length;
+            acc.cursor += idx + clause.length;
+          }
+        }
+      }
+    }
   }
 
   else if (payload.state === 'final') {
@@ -561,6 +846,25 @@ function handleGatewayChatEvent(payload) {
 
     const accumulatedText = streamingAccumulator.get(sessionKey) || '';
     streamingAccumulator.delete(sessionKey);
+
+    // Handle final fragment for voice clients
+    const voiceClients = [...wsClients].filter(c =>
+      c.voiceMode &&
+      c.voiceAgent === agent &&
+      c.ws.readyState === 1
+    );
+
+    if (voiceClients.length > 0 && voiceStreamAccumulators.has(sessionKey)) {
+      const acc = voiceStreamAccumulators.get(sessionKey);
+      const cleanText = stripMarkdownForTTS(accumulatedText);
+      const remainder = cleanText.slice(acc.cursor).trim();
+
+      if (remainder.length >= 3) {
+        synthesizeAndSendClause(agent, remainder, voiceClients);
+      }
+
+      voiceStreamAccumulators.delete(sessionKey);
+    }
 
     // Filter noise replies
     if (!accumulatedText || NOISE_REPLIES.test(accumulatedText.trim())) {
@@ -593,7 +897,139 @@ function handleGatewayChatEvent(payload) {
 
   else if (payload.state === 'error' || payload.state === 'aborted') {
     streamingAccumulator.delete(sessionKey);
+    voiceStreamAccumulators.delete(sessionKey);
     broadcastStreaming(agent, { type: 'stream_error', agent, error: payload.error || 'Agent error' });
+  }
+}
+
+// ============================================================
+// Synthesize clause and send to voice clients
+// ============================================================
+async function synthesizeAndSendClause(agent, text, clients) {
+  if (!text || text.length < 3) return;
+
+  const voice = AGENT_VOICES[agent] || DEFAULT_VOICE;
+  const audioId = crypto.randomBytes(8).toString('hex');
+
+  try {
+    let audioBuffer;
+
+    if (kokoroAvailable) {
+      const kokoroVoice = { 'isla': 'af_heart', 'lena': 'af_bella' }[agent] || 'af_heart';
+      const body = JSON.stringify({
+        model: 'kokoro',
+        input: text.substring(0, 3000),
+        voice: kokoroVoice,
+        response_format: 'wav'
+      });
+
+      audioBuffer = await new Promise((resolve, reject) => {
+        const chunks = [];
+        const req = http.request(KOKORO_SERVER_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(body)
+          },
+          timeout: 10000
+        }, (res) => {
+          res.on('data', d => chunks.push(d));
+          res.on('end', () => resolve(Buffer.concat(chunks)));
+        });
+        req.on('error', reject);
+        req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
+        req.end(body);
+      });
+    } else {
+      // Edge TTS fallback
+      const tts = new EdgeTTS({
+        voice,
+        lang: 'en-US',
+        outputFormat: 'audio-24khz-96kbitrate-mono-mp3'
+      });
+
+      const wsConnect = await tts._connectWebSocket();
+      const chunks = [];
+
+      audioBuffer = await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          try { wsConnect.close(); } catch {}
+          reject(new Error('TTS timeout'));
+        }, 15000);
+
+        wsConnect.on('message', (data, isBinary) => {
+          if (isBinary) {
+            const separator = 'Path:audio\r\n';
+            const idx = data.indexOf(separator) + separator.length;
+            const audioData = data.subarray(idx);
+            if (audioData.length > 0) chunks.push(audioData);
+          } else {
+            const msg = data.toString();
+            if (msg.includes('Path:turn.end')) {
+              clearTimeout(timeout);
+              try { wsConnect.close(); } catch {}
+              resolve(Buffer.concat(chunks));
+            }
+          }
+        });
+
+        wsConnect.on('error', (err) => {
+          clearTimeout(timeout);
+          reject(err);
+        });
+
+        const requestId = crypto.randomBytes(16).toString('hex');
+        const safeText = text.replace(/[<>&"']/g, c =>
+          ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' }[c])
+        );
+        wsConnect.send(
+          `X-RequestId:${requestId}\r\nContent-Type:application/ssml+xml\r\nPath:ssml\r\n\r\n` +
+          `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xmlns:mstts="https://www.w3.org/2001/mstts" xml:lang="en-US">` +
+          `<voice name="${voice}"><prosody rate="default" pitch="default" volume="default">${safeText}</prosody></voice></speak>`
+        );
+      });
+    }
+
+    // Send to all voice clients
+    for (const client of clients) {
+      if (client.ws.readyState !== 1) continue;
+
+      // Send audio start header
+      client.ws.send(JSON.stringify({
+        type: 'tts_audio_start',
+        id: audioId,
+        format: kokoroAvailable ? 'wav' : 'mp3',
+        agent
+      }));
+
+      // Send binary audio
+      if (audioBuffer && audioBuffer.length > 0) {
+        client.ws.send(audioBuffer);
+      }
+
+      // Send audio end
+      client.ws.send(JSON.stringify({
+        type: 'tts_audio_end',
+        id: audioId,
+        agent
+      }));
+    }
+
+    console.log(`[WS-Voice] Synthesized and sent TTS for "${text.substring(0, 40)}..." to ${clients.length} client(s)`);
+
+  } catch (e) {
+    console.error('[WS-Voice] Clause synthesis failed:', e.message);
+    // Send error to clients
+    for (const client of clients) {
+      if (client.ws.readyState === 1) {
+        client.ws.send(JSON.stringify({
+          type: 'tts_audio_error',
+          id: audioId,
+          agent,
+          error: e.message
+        }));
+      }
+    }
   }
 }
 
@@ -848,6 +1284,81 @@ function saveActionItems(items) {
   }
 }
 
+// Load and aggregate token usage data
+function loadTokenUsageData() {
+  const tokenDataDir = path.join(__dirname, 'data');
+  const result = {
+    today: null,
+    last7days: [],
+    byAgent: {},
+    summary: {
+      todayTotal: 0,
+      weekTotal: 0,
+      avgDaily: 0,
+      topAgents: []
+    }
+  };
+
+  try {
+    // Try to load today's token usage from the daily job output
+    const todayFile = path.join(tokenDataDir, `token-usage-${new Date().toISOString().split('T')[0]}.json`);
+    if (fs.existsSync(todayFile)) {
+      result.today = JSON.parse(fs.readFileSync(todayFile, 'utf-8'));
+      result.summary.todayTotal = result.today.totalTokens || 0;
+    }
+
+    // Load last 7 days from individual files
+    const now = new Date();
+    for (let i = 0; i < 7; i++) {
+      const date = new Date(now);
+      date.setDate(date.getDate() - i);
+      const dateStr = date.toISOString().split('T')[0];
+      const filePath = path.join(tokenDataDir, `token-usage-${dateStr}.json`);
+      
+      if (fs.existsSync(filePath)) {
+        try {
+          const dayData = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+          result.last7days.push({
+            date: dateStr,
+            tokens: dayData.totalTokens || 0,
+            agents: dayData.byAgent || {}
+          });
+          result.summary.weekTotal += dayData.totalTokens || 0;
+          
+          // Aggregate by agent
+          if (dayData.byAgent) {
+            for (const [agent, tokens] of Object.entries(dayData.byAgent)) {
+              if (!result.byAgent[agent]) {
+                result.byAgent[agent] = { total: 0, days: [] };
+              }
+              result.byAgent[agent].total += tokens;
+              result.byAgent[agent].days.push({ date: dateStr, tokens });
+            }
+          }
+        } catch (e) {
+          console.error(`Failed to parse ${filePath}:`, e.message);
+        }
+      }
+    }
+
+    // Calculate daily average
+    if (result.last7days.length > 0) {
+      result.summary.avgDaily = Math.round(result.summary.weekTotal / result.last7days.length);
+    }
+
+    // Get top 5 agents this week
+    result.summary.topAgents = Object.entries(result.byAgent)
+      .map(([agent, data]) => ({ agent, tokens: data.total }))
+      .sort((a, b) => b.tokens - a.tokens)
+      .slice(0, 5);
+
+    return result;
+  } catch (e) {
+    console.error('Failed to load token usage data:', e.message);
+    return result;
+  }
+}
+
 // Log interaction
 function logInteraction(from, to, topic, type = 'message') {
   const interactions = loadInteractions();
@@ -921,6 +1432,71 @@ function parseAgentMemory(content) {
   return sections;
 }
 
+// ============================================================
+// SMART ROUTER — instant responses for simple voice queries
+// ============================================================
+function smartRouteVoiceQuery(text) {
+  const lower = text.toLowerCase().trim();
+
+  // Greetings
+  if (/^(hi|hello|hey|howdy|yo|sup|what'?s up|good (morning|afternoon|evening))[\s!.?]*$/i.test(lower)) {
+    return "Hi there! What can I help with?";
+  }
+
+  // Gratitude
+  if (/^(thanks?|thank you|thx|ty|appreciate it|cheers)[\s!.?]*$/i.test(lower)) {
+    return "Happy to help!";
+  }
+
+  // Farewell
+  if (/^(bye|goodbye|see you|later|good night|night|talk later)[\s!.?]*$/i.test(lower)) {
+    return "Talk to you later!";
+  }
+
+  // Time queries
+  if (/\b(what time|current time|time is it|what'?s the time)\b/i.test(lower)) {
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'America/New_York' });
+    return `It's ${timeStr}.`;
+  }
+
+  // Date queries
+  if (/\b(what'?s the date|today'?s date|what day|what date)\b/i.test(lower)) {
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone: 'America/New_York' });
+    return `Today is ${dateStr}.`;
+  }
+
+  // Simple math
+  const mathMatch = lower.match(/(?:what(?:'s| is)\s+)?(\d+(?:\.\d+)?)\s*([\+\-\*x×\/÷]|plus|minus|times|divided by|multiplied by)\s*(\d+(?:\.\d+)?)/i);
+  if (mathMatch) {
+    const a = parseFloat(mathMatch[1]);
+    const opRaw = mathMatch[2].toLowerCase();
+    const b = parseFloat(mathMatch[3]);
+    let result;
+    const op = opRaw === 'plus' || opRaw === '+' ? '+' :
+               opRaw === 'minus' || opRaw === '-' ? '-' :
+               opRaw === 'times' || opRaw === 'x' || opRaw === '×' || opRaw === 'multiplied by' || opRaw === '*' ? '*' :
+               opRaw === 'divided by' || opRaw === '/' || opRaw === '÷' ? '/' : null;
+    if (op === '+') result = a + b;
+    else if (op === '-') result = a - b;
+    else if (op === '*') result = a * b;
+    else if (op === '/') result = b !== 0 ? a / b : null;
+
+    if (result !== null && result !== undefined) {
+      const display = Number.isInteger(result) ? result.toString() : result.toFixed(2);
+      return `That's ${display}.`;
+    }
+  }
+
+  // Yes/No acknowledgments — don't intercept, let Claude handle the context
+  if (/^(yes|yeah|yep|yup|no|nope|nah|ok|okay|alright|got it|understood|sure)[\s!.?]*$/i.test(lower)) {
+    return null;
+  }
+
+  return null; // Not a simple query, fall through to Claude
+}
+
 const server = http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
@@ -980,7 +1556,7 @@ const server = http.createServer(async (req, res) => {
   // ============================================================
   else if ((req.url === '/voice/transcribe' || req.url === '/api/voice/transcribe') && req.method === 'POST') {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'voice-'));
-    const rawPath  = path.join(tmpDir, 'input.webm');
+    let rawExt = 'webm'; // default, may be overridden by mimeType field
     const wavPath  = path.join(tmpDir, 'input.wav');
 
     const cleanup = () => {
@@ -1001,6 +1577,7 @@ const server = http.createServer(async (req, res) => {
       const boundary = contentType.split('boundary=')[1]?.trim();
 
       let audioData;
+      let clientMimeType = null;
       if (boundary) {
         // Parse multipart/form-data
         const boundaryBuf = Buffer.from(`--${boundary}`);
@@ -1020,8 +1597,17 @@ const server = http.createServer(async (req, res) => {
           const header = part.slice(0, headerEnd).toString();
           if (header.includes('name="audio"') || header.includes('filename=')) {
             audioData = part.slice(headerEnd + 4, part.length - 2); // trim trailing \r\n
-            break;
+          } else if (header.includes('name="mimeType"')) {
+            clientMimeType = part.slice(headerEnd + 4, part.length - 2).toString().trim();
           }
+        }
+        // Determine file extension from client-provided MIME type
+        if (clientMimeType) {
+          if (clientMimeType.includes('mp4') || clientMimeType.includes('m4a')) rawExt = 'mp4';
+          else if (clientMimeType.includes('wav')) rawExt = 'wav';
+          else if (clientMimeType.includes('ogg')) rawExt = 'ogg';
+          else rawExt = 'webm';
+          console.log(`[Voice] Client mimeType: ${clientMimeType} → ext: ${rawExt}`);
         }
       } else {
         // Raw audio body (no multipart wrapper)
@@ -1034,6 +1620,7 @@ const server = http.createServer(async (req, res) => {
         return res.end(JSON.stringify({ ok: false, error: 'No audio data received' }));
       }
 
+      const rawPath = path.join(tmpDir, `input.${rawExt}`);
       fs.writeFileSync(rawPath, audioData);
 
       let transcript;
@@ -1042,11 +1629,13 @@ const server = http.createServer(async (req, res) => {
         // Fast path: whisper-server (model already loaded, handles conversion)
         transcript = await new Promise((resolve, reject) => {
           const boundary = '----WhisperBoundary' + Date.now();
-          const header = `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="audio.webm"\r\nContent-Type: audio/webm\r\n\r\n`;
-          // temperature=0.2: non-zero reduces hallucination loops vs greedy 0.0
-          // best_of=3: sample multiple candidates, pick best — reduces repetition
-          const fieldTemp   = `\r\n--${boundary}\r\nContent-Disposition: form-data; name="temperature"\r\n\r\n0.2`;
-          const fieldBestOf = `\r\n--${boundary}\r\nContent-Disposition: form-data; name="best_of"\r\n\r\n3`;
+          const whisperMime = clientMimeType || 'audio/webm';
+          const whisperFilename = `audio.${rawExt}`;
+          const header = `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${whisperFilename}"\r\nContent-Type: ${whisperMime}\r\n\r\n`;
+          // Configurable via WHISPER_BEST_OF and WHISPER_TEMPERATURE env vars
+          // best_of=1 + temperature=0: fastest (greedy). best_of=3 + temperature=0.2: accurate (sampling).
+          const fieldTemp   = `\r\n--${boundary}\r\nContent-Disposition: form-data; name="temperature"\r\n\r\n${WHISPER_TEMPERATURE}`;
+          const fieldBestOf = `\r\n--${boundary}\r\nContent-Disposition: form-data; name="best_of"\r\n\r\n${WHISPER_BEST_OF}`;
           const fieldFmt    = `\r\n--${boundary}\r\nContent-Disposition: form-data; name="response_format"\r\n\r\njson`;
           const footer = `\r\n--${boundary}--\r\n`;
           const payload = Buffer.concat([
@@ -1250,8 +1839,45 @@ const server = http.createServer(async (req, res) => {
         const idempotencyKey = `user-${now}-${Math.random().toString(36).slice(2)}`;
         const result = chatDb.addMessage(agentKey, 'user', content, now, idempotencyKey);
 
+        // Mark agent as active for smart polling (user just messaged them)
+        markAgentActive(agentKey);
+
         // 2. DON'T broadcast - client already has optimistic message
         // (Broadcasts from Gateway for external sources still work via event handler)
+
+        // Smart router: check for simple voice queries that can be answered instantly
+        // Only active for voice-mode messages (prefixed with [Voice conversation...)
+        const isVoiceMessage = content.startsWith('[Voice conversation');
+        const actualText = isVoiceMessage ? content.replace(/^\[Voice conversation[^\]]*\]\s*/, '') : content;
+
+        if (isVoiceMessage) {
+          const smartResponse = smartRouteVoiceQuery(actualText);
+          if (smartResponse) {
+            console.log(`[Smart-Route] Instant response for "${actualText.substring(0, 40)}": "${smartResponse}"`);
+
+            // Commit the smart response as an assistant message
+            const smartNow = Date.now();
+            const smartKey = `smart-${agentKey}-${smartNow}-${Math.random().toString(36).slice(2)}`;
+            const smartResult = chatDb.addMessage(agentKey, 'assistant', smartResponse, smartNow, smartKey);
+
+            // Broadcast to clients
+            const smartMsg = formatMessageForClient({
+              seq: smartResult.seq, agent: agentKey, role: 'assistant', content: smartResponse, timestamp: smartNow
+            });
+            broadcastMessage(agentKey, smartMsg);
+
+            // Send TTS audio to voice clients
+            const voiceClients = [...wsClients].filter(c =>
+              c.voiceMode && c.voiceAgent === agentKey && c.ws.readyState === 1
+            );
+            if (voiceClients.length > 0) {
+              synthesizeAndSendClause(agentKey, smartResponse, voiceClients);
+            }
+
+            res.end(JSON.stringify({ ok: true, seq: smartResult.seq, smartRouted: true }));
+            return;
+          }
+        }
 
         // 3. Send to Gateway for agent delivery
         if (!gwConnected) {
@@ -1693,6 +2319,17 @@ const server = http.createServer(async (req, res) => {
     res.end(JSON.stringify({ ok: true, removed: items.length - remaining.length }));
   }
   
+  // Token Usage Dashboard (GET)
+  else if (req.url === '/token-usage' && req.method === 'GET') {
+    try {
+      const tokenData = loadTokenUsageData();
+      res.end(JSON.stringify({ ok: true, data: tokenData }));
+    } catch (e) {
+      res.statusCode = 500;
+      res.end(JSON.stringify({ ok: false, error: e.message }));
+    }
+  }
+  
   // Files - recursively scan workspace for files
   else if (req.url === '/files') {
     const workspaceDir = wsPaths.workspaceRoot;
@@ -1908,6 +2545,27 @@ const server = http.createServer(async (req, res) => {
     }));
   }
   
+  // Serve filler audio files
+  else if (req.url.startsWith('/audio/fillers/') && req.method === 'GET') {
+    const filePath = path.join(__dirname, req.url.split('?')[0]);
+    if (!filePath.startsWith(path.join(__dirname, 'audio', 'fillers'))) {
+      res.statusCode = 403;
+      res.end(JSON.stringify({ error: 'Forbidden' }));
+    } else if (fs.existsSync(filePath)) {
+      const ext = path.extname(filePath).toLowerCase();
+      const contentTypes = {
+        '.wav': 'audio/wav',
+        '.mp3': 'audio/mpeg',
+        '.json': 'application/json'
+      };
+      res.setHeader('Content-Type', contentTypes[ext] || 'application/octet-stream');
+      fs.createReadStream(filePath).pipe(res);
+    } else {
+      res.statusCode = 404;
+      res.end(JSON.stringify({ error: 'Filler not found' }));
+    }
+  }
+
   else {
     res.statusCode = 404;
     res.end(JSON.stringify({ error: 'Not found' }));
@@ -1921,6 +2579,7 @@ server.listen(PORT, '0.0.0.0', () => {
   // Delay voice status log slightly so the async health checks can resolve first
   setTimeout(() => {
     console.log(`🎙️ Whisper STT: ${whisperServerAvailable ? 'whisper-server/ggml-medium.en (fast)' : 'whisper-cli fallback (no server on :8090)'}`);
+    console.log(`   Whisper config: best_of=${WHISPER_BEST_OF}, temperature=${WHISPER_TEMPERATURE}`);
     console.log(`🔊 TTS: ${kokoroAvailable ? 'Kokoro local neural (fast, :8880)' : 'Edge TTS fallback (no Kokoro on :8880)'}`);
   }, 1000);
 });
@@ -1930,6 +2589,11 @@ const wss = new WebSocketServer({ server });
 
 // Track connected clients and their subscriptions
 const wsClients = new Set();
+
+// ============================================================
+// Server-side TTS accumulator for voice-mode streaming
+// ============================================================
+const voiceStreamAccumulators = new Map(); // sessionKey -> { text: string, cursor: number }
 
 // WebSocket heartbeat to clean up stale connections
 const WS_HEARTBEAT_INTERVAL = 30000; // 30 seconds
@@ -1989,6 +2653,36 @@ wss.on('connection', (ws) => {
 
     if (msg.type === 'unsubscribe') {
       client.subscribedAgent = null;
+    }
+
+    // Voice mode subscription — enable server-side TTS streaming for this client
+    if (msg.type === 'voice_subscribe' && msg.agent && agentSessions[msg.agent]) {
+      client.voiceMode = true;
+      client.voiceAgent = msg.agent;
+      // Acknowledge subscription so client knows server-side TTS is active
+      ws.send(JSON.stringify({ type: 'voice_subscribed', agent: msg.agent }));
+      const voiceClientCount = [...wsClients].filter(c => c.voiceMode).length;
+      console.log(`[WS-Voice] Client subscribed to voice mode for: ${msg.agent} (${voiceClientCount} total voice clients)`);
+    }
+
+    if (msg.type === 'voice_unsubscribe') {
+      const prevAgent = client.voiceAgent;
+      client.voiceMode = false;
+      client.voiceAgent = null;
+      const voiceClientCount = [...wsClients].filter(c => c.voiceMode).length;
+      console.log(`[WS-Voice] Client unsubscribed from voice mode (was: ${prevAgent}, ${voiceClientCount} voice clients remaining)`);
+    }
+
+    // Voice session keepalive — lightweight history fetch to keep the agent session warm
+    // and prevent cold-start penalty (200-500ms) on subsequent voice turns
+    if (msg.type === 'voice_keepalive' && msg.agent && agentSessions[msg.agent]) {
+      gwRequest('chat.history', { sessionKey: agentSessions[msg.agent], limit: 1 })
+        .catch(() => {}); // Fire and forget — just keeping the session warm
+    }
+
+    // Manual TTS request (fallback when server-side streaming not available)
+    if (msg.type === 'voice_tts' && msg.text && msg.agent) {
+      handleVoiceTTS(client, msg.agent, msg.text);
     }
 
     // Multi-agent sync: client sends lastSeq per agent, server returns any new messages

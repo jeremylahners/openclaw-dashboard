@@ -157,6 +157,7 @@
             <button id="voiceModeBtn" title="Voice conversation mode">🎙️ Talk</button>
           <audio id="ttsAudioEl" playsinline preload="none" style="display:none;"></audio>
             <span id="voiceStatusLabel" style="font-size: 0.75rem; color: #888; display: none;"></span>
+            <span id="gatewayStatusIndicator" style="font-size: 0.7rem; color: #f59e0b;">🟡 Connecting</span>
             <span id="wsStatus" style="font-size: 0.7rem; color: #555;">Connecting...</span>
           </div>
         </div>
@@ -1831,6 +1832,9 @@
     // Chat v2: WebSocket to backend for message push
     let chatWs = null;
     let chatWsReconnectTimer = null;
+    // Exponential backoff for WebSocket reconnect (matches server-side pattern)
+    let chatWsReconnectDelay = 3000; // 3s initial
+    const CHAT_WS_RECONNECT_MAX = 30000; // 30s cap
 
     function chatWsConnect() {
       if (chatWs && chatWs.readyState <= 1) return;
@@ -1838,19 +1842,31 @@
       const url = `${wsProto}//${window.location.host}/ws`;
       console.log('[Chat-WS] Connecting to', url);
       chatWs = new WebSocket(url);
+      chatWs.binaryType = 'arraybuffer'; // Receive binary frames as ArrayBuffer (not Blob) for synchronous TTS audio handling
 
       chatWs.onopen = () => {
         console.log('[Chat-WS] Connected');
+        chatWsReconnectDelay = 3000; // Reset backoff on successful connection
         document.getElementById('wsStatus').textContent = 'Live';
         document.getElementById('wsStatus').style.color = '#22c55e';
         if (currentAgentKey) {
           console.log('[Chat-WS] Subscribing to', currentAgentKey);
           const lastSeq = getLastSeq(currentAgentKey);
           chatWs.send(JSON.stringify({ type: 'subscribe', agent: currentAgentKey, lastSeq }));
+          // Re-subscribe to voice mode if it was active before WS disconnect
+          if (voiceModeActive) {
+            chatWs.send(JSON.stringify({ type: 'voice_subscribe', agent: currentAgentKey }));
+          }
         }
       };
 
       chatWs.onmessage = (event) => {
+        // Handle binary WebSocket frames (audio data)
+        if (event.data instanceof ArrayBuffer || event.data instanceof Blob) {
+          handleBinaryWSMessage(event.data);
+          return;
+        }
+
         let msg;
         try { msg = JSON.parse(event.data); } catch { return; }
 
@@ -1874,8 +1890,15 @@
           fetchPriorities();
         }
 
+        // Gateway connection state indicator
+        if (msg.type === 'gateway_state') {
+          updateGatewayStatusIndicator(msg.state);
+          console.log('[UI] Gateway state:', msg.state);
+        }
+
         // Server-owned Gateway streaming events
         if (msg.type === 'stream_delta') {
+          voiceLatencyTracker.markFirstToken(); // QA instrumentation (first token arrival)
           updateStreaming(msg.agent, msg.text);
           // Streaming TTS: feed cumulative text to sentence extractor
           if (voiceModeActive && msg.agent === currentAgentKey) {
@@ -1900,6 +1923,86 @@
           clearStreamingEl(msg.agent);
         }
 
+        // Server confirmed voice mode subscription — server-side TTS streaming is active
+        if (msg.type === 'voice_subscribed') {
+          wsVoiceSubscribed = true;
+          console.log('[WS-Voice] Server confirmed voice subscription for:', msg.agent);
+        }
+
+        // WebSocket TTS messages — server-pushed audio
+        if (msg.type === 'tts_audio_start') {
+          currentWSAudioId = msg.id;
+          // Auto-expire stale pending buffers after 30s to prevent memory leaks
+          const pendingTimeoutId = setTimeout(() => {
+            if (wsAudioPendingBuffers.has(msg.id)) {
+              console.warn('[WS-TTS] Pending buffer timeout (30s), cleaning up:', msg.id);
+              wsAudioPendingBuffers.delete(msg.id);
+              if (currentWSAudioId === msg.id) currentWSAudioId = null;
+            }
+          }, PENDING_BUFFER_TIMEOUT);
+          wsAudioPendingBuffers.set(msg.id, {
+            chunks: [],
+            format: msg.format || 'wav',
+            agent: msg.agent,
+            timeoutId: pendingTimeoutId
+          });
+        }
+
+        if (msg.type === 'tts_audio_end') {
+          if (currentWSAudioId === msg.id) currentWSAudioId = null;
+          const pending = wsAudioPendingBuffers.get(msg.id);
+          // Clear the leak-prevention timeout since we got tts_audio_end
+          if (pending && pending.timeoutId) clearTimeout(pending.timeoutId);
+          if (pending && pending.chunks.length > 0) {
+            // Concatenate all binary chunks
+            const totalLength = pending.chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+            console.log(`[WS-TTS] Assembling ${pending.chunks.length} chunk(s), ${totalLength} bytes for ${msg.id}`);
+            const combined = new Uint8Array(totalLength);
+            let offset = 0;
+            for (const chunk of pending.chunks) {
+              combined.set(new Uint8Array(chunk), offset);
+              offset += chunk.byteLength;
+            }
+
+            // Decode to AudioBuffer
+            if (audioCtx) {
+              // Ensure AudioContext is active before decoding
+              if (audioCtx.state === 'suspended') {
+                audioCtx.resume().catch(() => {});
+              }
+              audioCtx.decodeAudioData(combined.buffer, (audioBuffer) => {
+                console.log(`[WS-TTS] Decoded audio: ${audioBuffer.duration.toFixed(2)}s, queuing for playback`);
+                wsAudioQueue.push(audioBuffer);
+                if (!wsAudioPlaying) playNextWSAudio();
+              }, (e) => {
+                console.error('[WS-TTS] Decode error:', e);
+              });
+            } else {
+              console.warn('[WS-TTS] No AudioContext available for decode');
+            }
+          } else {
+            console.warn(`[WS-TTS] tts_audio_end with ${pending ? pending.chunks.length : 0} chunks for ${msg.id}`);
+          }
+          wsAudioPendingBuffers.delete(msg.id);
+        }
+
+        if (msg.type === 'tts_audio_error') {
+          console.error('[WS-TTS] Synthesis error for', msg.id, ':', msg.error);
+          wsAudioPendingBuffers.delete(msg.id);
+          if (currentWSAudioId === msg.id) currentWSAudioId = null;
+          // Recovery: skip this failed clause and continue to next queued audio
+          // If nothing is currently playing, kick the playback chain
+          if (!wsAudioPlaying && wsAudioQueue.length > 0) {
+            playNextWSAudio();
+          } else if (!wsAudioPlaying && wsAudioQueue.length === 0) {
+            // No more audio — return to listening if in voice mode
+            if (voiceModeActive) {
+              stopBargeInMonitor();
+              setTimeout(() => startListening(), 400);
+            }
+          }
+        }
+
         // Runtime tab registration: refresh tab bar for affected agent
         if (msg.type === 'tabs_updated' && msg.agent) {
           // Reload config to get updated runtime tabs
@@ -1918,15 +2021,116 @@
       };
 
       chatWs.onclose = () => {
-        console.log('[Chat-WS] Disconnected, reconnecting in 3s');
+        const jitter = Math.random() * 1000; // Add jitter to prevent thundering herd
+        const delay = chatWsReconnectDelay + jitter;
+        console.log(`[Chat-WS] Disconnected, reconnecting in ${(delay / 1000).toFixed(1)}s (backoff: ${chatWsReconnectDelay}ms)`);
+        wsVoiceSubscribed = false; // Server-side TTS lost — fall back to HTTP on next delta
         const wsEl = document.getElementById('wsStatus');
         if (wsEl) { wsEl.textContent = 'Reconnecting...'; wsEl.style.color = '#f59e0b'; }
-        chatWsReconnectTimer = setTimeout(chatWsConnect, 3000);
+        chatWsReconnectTimer = setTimeout(chatWsConnect, delay);
+        // Exponential backoff, capped at 30s
+        chatWsReconnectDelay = Math.min(chatWsReconnectDelay * 1.5, CHAT_WS_RECONNECT_MAX);
       };
 
       chatWs.onerror = (e) => {
         console.error('[Chat-WS] Error:', e);
       };
+    }
+
+    // ============================================================
+    // Binary WebSocket message handler (for TTS audio)
+    // ============================================================
+    function handleBinaryWSMessage(data) {
+      // Route to the current audio ID being assembled (prevents race condition
+      // when multiple TTS clauses overlap — each binary frame belongs to the
+      // most recent tts_audio_start, not a random pending buffer)
+      if (!currentWSAudioId) {
+        console.warn('[WS-TTS] Received binary data but no current audio ID');
+        return;
+      }
+      
+      const pending = wsAudioPendingBuffers.get(currentWSAudioId);
+      if (!pending) {
+        console.warn('[WS-TTS] Received binary data for unknown audio ID:', currentWSAudioId);
+        return;
+      }
+
+      // binaryType='arraybuffer' on the WebSocket guarantees data is ArrayBuffer.
+      // No async Blob conversion needed — chunks are available synchronously
+      // when tts_audio_end arrives in the next message frame.
+      if (data instanceof ArrayBuffer) {
+        pending.chunks.push(data);
+      } else if (data instanceof Blob) {
+        // Fallback (shouldn't happen with binaryType='arraybuffer')
+        console.warn('[WS-TTS] Unexpected Blob — converting async');
+        data.arrayBuffer().then(buffer => {
+          pending.chunks.push(buffer);
+        });
+      } else {
+        pending.chunks.push(data);
+      }
+    }
+
+    // ============================================================
+    // AudioBuffer gapless playback (Web Audio API)
+    // ============================================================
+    function playNextWSAudio() {
+      if (wsAudioQueue.length === 0) {
+        wsAudioPlaying = false;
+        wsAudioNextTime = 0;
+        stopBargeInMonitor();
+        if (voiceModeActive) setTimeout(() => startListening(), 400);
+        return;
+      }
+
+      stopFillerAudio(); // Stop filler when WS audio arrives
+      wsAudioPlaying = true;
+      const buffer = wsAudioQueue.shift();
+
+      // PWA safety: AudioContext can auto-suspend (especially iOS/macOS PWA)
+      if (audioCtx && audioCtx.state === 'suspended') {
+        audioCtx.resume().catch(e => console.warn('[WS-TTS] AudioContext resume failed:', e));
+      }
+
+      // Create buffer source node
+      const source = audioCtx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(audioCtx.destination);
+      wsAudioCurrentSource = source; // Track for barge-in stop
+
+      // Schedule start time for gapless playback
+      const now = audioCtx.currentTime;
+      const startTime = Math.max(now, wsAudioNextTime);
+      source.start(startTime);
+
+      // Schedule next buffer
+      wsAudioNextTime = startTime + buffer.duration;
+
+      // Queue next buffer
+      source.onended = () => {
+        if (wsAudioCurrentSource === source) wsAudioCurrentSource = null;
+        playNextWSAudio();
+      };
+
+      // Start barge-in monitoring
+      if (voiceModeActive) startBargeInMonitor();
+    }
+
+    // Gateway connection state indicator
+    function updateGatewayStatusIndicator(state) {
+      const indicator = document.getElementById('gatewayStatusIndicator');
+      if (!indicator) return;
+
+      const states = {
+        'connecting':   { color: '#f59e0b', label: '🟡 Connecting' },
+        'connected':    { color: '#10b981', label: '🟢 Connected' },
+        'reconnecting': { color: '#f59e0b', label: '🟡 Reconnecting' },
+        'failed':       { color: '#ef4444', label: '🔴 Connection Failed' }
+      };
+
+      const config = states[state] || states.reconnecting;
+      indicator.style.color = config.color;
+      indicator.textContent = config.label;
     }
 
     chatWsConnect();
@@ -1947,14 +2151,15 @@
 
     setInterval(reconcileAllAgents, 30000); // Every 30 seconds
 
-    // Refresh current agent's chat every 3 seconds to catch any missed messages
+    // Refresh current agent's chat periodically to catch any missed messages
+    // Reduced from 3s → 30s: event stream handles realtime responses,
+    // this is only for reconciliation of missed agent-to-agent comms
     setInterval(() => {
       if (currentAgentKey && chatWs && chatWs.readyState === 1) {
         const lastSeq = getLastSeq(currentAgentKey);
-        console.log('[Chat] Periodic refresh for', currentAgentKey, 'lastSeq:', lastSeq);
         chatWs.send(JSON.stringify({ type: 'subscribe', agent: currentAgentKey, lastSeq }));
       }
-    }, 3000); // Every 3 seconds (was 60s)
+    }, 30000); // Every 30 seconds (reconciliation only)
 
     // Reconcile immediately when tab becomes visible (e.g., switching back from iPad app)
     document.addEventListener('visibilitychange', () => {
@@ -2940,6 +3145,9 @@
       delete messageDrafts[currentAgentKey];
       localStorage.setItem('messageDrafts', JSON.stringify(messageDrafts));
 
+      // Reset streaming TTS cursor when sending a new message in voice mode
+      if (voiceModeActive) ttsStreamCursor.set(currentAgentKey, 0);
+
       // Optimistically display user message immediately
       const now = Date.now();
       const idempotencyKey = `user-${now}-${Math.random().toString(36).slice(2)}`;
@@ -2961,11 +3169,15 @@
       autoScroll(true); // Force scroll to show user's new message
 
       // Send via backend REST — server commits user message and forwards to Gateway
+      // Voice mode: prepend conversational context hint for shorter, spoken responses
+      const voiceHint = voiceModeActive
+        ? '[Voice conversation — keep response brief and conversational, 1-3 sentences max. No markdown, no lists, no code blocks. Speak naturally as in a phone call.]\n'
+        : '';
       try {
         const resp = await fetch(`${API_BASE}/chat/${currentAgentKey}/send`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content: text })
+          body: JSON.stringify({ content: voiceHint + text })
         });
         const data = await resp.json();
         if (!data.ok) {
@@ -3434,8 +3646,62 @@
     // VOICE I/O — True conversation mode with VAD
     // ============================================================
 
-    const SILENCE_THRESHOLD = 8;   // avg frequency amplitude (0-255) below which = silence
+    const SILENCE_THRESHOLD_DEFAULT = 8; // fallback avg frequency amplitude (0-255) below which = silence
+    const SILENCE_THRESHOLD_MIN = 6;   // floor — never go below this even in dead-silent rooms
+    const SILENCE_THRESHOLD_MAX = 30;  // ceiling — cap for very noisy environments
+    let dynamicSilenceThreshold = SILENCE_THRESHOLD_DEFAULT; // updated by calibrateVADThreshold()
     const SILENCE_DURATION  = 650;  // ms of silence before end-of-utterance (tightened for whisper-server)
+
+    // ============================================================
+    // VOICE LATENCY TRACKER — QA instrumentation (Harper)
+    // ============================================================
+    class VoiceLatencyTracker {
+      constructor() {
+        this.reset();
+      }
+
+      reset() {
+        this.vadEndTime = null;
+        this.firstTokenTime = null;
+        this.firstAudioTime = null;
+        this.allCompleteTime = null;
+      }
+
+      markVADEnd() {
+        this.reset();
+        this.vadEndTime = performance.now();
+      }
+
+      markFirstToken() {
+        if (!this.vadEndTime || this.firstTokenTime) return; // Already marked or no VAD start
+        this.firstTokenTime = performance.now();
+      }
+
+      markFirstAudio() {
+        if (!this.vadEndTime || this.firstAudioTime) return;
+        this.firstAudioTime = performance.now();
+      }
+
+      markAllComplete() {
+        if (!this.vadEndTime || this.allCompleteTime) return;
+        this.allCompleteTime = performance.now();
+        this.logResults();
+      }
+
+      logResults() {
+        if (!this.vadEndTime) return;
+        
+        const vadToToken = this.firstTokenTime ? Math.round(this.firstTokenTime - this.vadEndTime) : '?';
+        const vadToAudio = this.firstAudioTime ? Math.round(this.firstAudioTime - this.vadEndTime) : '?';
+        const total = this.allCompleteTime ? Math.round(this.allCompleteTime - this.vadEndTime) : '?';
+        
+        console.log(
+          `[Voice Latency] VAD→FirstToken: ${vadToToken}ms, VAD→FirstAudio: ${vadToAudio}ms, Total: ${total}ms`
+        );
+      }
+    }
+
+    const voiceLatencyTracker = new VoiceLatencyTracker();
 
     // --- State ---
     let voiceModeActive = false;
@@ -3457,14 +3723,16 @@
     let analyser        = null;  // AnalyserNode — reused across cycles
     let vadTimer        = null;
     let bargeInTimer    = null;  // VAD loop that runs during TTS playback for interruption
+    let voiceKeepAlive  = null;  // session keepalive interval during voice mode
     let lastSoundTime   = 0;
     let hasSpeech       = false;
+    let speechStartTime = 0;    // when speech first detected this utterance (for min duration check)
     let voiceState      = 'idle'; // idle | listening | processing | speaking
 
     // --- Streaming TTS state ---
     // Use the persistent <audio id="ttsAudioEl"> DOM element (iOS requires
     // play() on an element touched during a user gesture, not new Audio())
-    let ttsQueue        = [];    // array of { url, sentences } to play sequentially
+    let ttsQueue        = [];    // array of { url OR audioBuffer } to play sequentially
     let ttsPlaying      = false;
     // Per-agent cursor: tracks how much text has already been queued for TTS
     // keyed by agentKey, value = char offset into accumulated stream text
@@ -3472,6 +3740,44 @@
     // Tracks agents whose response was fully handled by streaming TTS — prevents
     // speakResponse() from double-playing the full text when message_committed fires.
     const ttsStreamComplete = new Set();
+
+    // WebSocket TTS state — gapless AudioBuffer playback
+    let wsAudioQueue = [];        // array of AudioBuffer objects
+    let wsAudioPlaying = false;
+    let wsAudioNextTime = 0;      // scheduled start time for next buffer
+    let wsAudioCurrentSource = null; // currently playing AudioBufferSourceNode (for barge-in stop)
+    let currentWSAudioId = null;  // current audio ID being assembled (for binary frame routing)
+    let wsVoiceSubscribed = false; // server confirmed voice_subscribe — server-side TTS active
+    const wsAudioPendingBuffers = new Map(); // audioId -> { chunks: [], format, timeoutId }
+    const PENDING_BUFFER_TIMEOUT = 30000; // 30s — auto-expire stale audio buffers
+
+    // Filler audio state — short "hmm / let me think" clips played during processing
+    let fillerBuffers = null;     // map of filename -> AudioBuffer, null until preloaded
+    let fillerSource  = null;     // currently playing filler AudioBufferSourceNode
+
+    function playFillerAudio() {
+      if (!audioCtx || !fillerBuffers) return;
+      const keys = Object.keys(fillerBuffers);
+      if (keys.length === 0) return;
+      const key = keys[Math.floor(Math.random() * keys.length)];
+      const buffer = fillerBuffers[key];
+      if (!buffer) return;
+      stopFillerAudio();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      fillerSource = audioCtx.createBufferSource();
+      fillerSource.buffer = buffer;
+      fillerSource.connect(audioCtx.destination);
+      fillerSource.start();
+      fillerSource.onended = () => { fillerSource = null; };
+      console.log('[Filler] Playing:', key);
+    }
+
+    function stopFillerAudio() {
+      if (fillerSource) {
+        try { fillerSource.stop(); } catch {}
+        fillerSource = null;
+      }
+    }
 
     // --- DOM refs ---
     const voiceModeBtn   = document.getElementById('voiceModeBtn');
@@ -3495,6 +3801,14 @@
         voiceStatusLbl.textContent = lbl;
         voiceStatusLbl.style.display = lbl ? 'inline' : 'none';
       }
+      // Play a filler sound while the agent is thinking
+      if (state === 'processing' && fillerBuffers) {
+        playFillerAudio();
+      }
+      // Stop any filler when we move to a different state
+      if (state !== 'processing') {
+        stopFillerAudio();
+      }
     }
 
     // --- Talk button ---
@@ -3506,6 +3820,31 @@
     document.addEventListener('keydown', e => {
       if (e.key === 'Escape' && voiceModeActive) endVoiceMode();
     });
+
+    // Calibrate VAD silence threshold based on ambient noise level.
+    // Samples the microphone for 2 seconds and sets the threshold to ~2.5x the ambient level.
+    // Must be called AFTER audioCtx + analyser are created.
+    async function calibrateVADThreshold() {
+      if (!analyser) {
+        dynamicSilenceThreshold = SILENCE_THRESHOLD_DEFAULT;
+        return;
+      }
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+      const readings = [];
+      // Sample ambient noise for 2 seconds (20 samples at 100ms intervals)
+      for (let i = 0; i < 20; i++) {
+        analyser.getByteFrequencyData(dataArray);
+        const avg = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
+        readings.push(avg);
+        await new Promise(r => setTimeout(r, 100));
+      }
+      // Use the 90th percentile (not max) to be robust against transient clicks
+      readings.sort((a, b) => a - b);
+      const p90 = readings[Math.floor(readings.length * 0.9)];
+      const raw = Math.ceil(p90 * 2.5);
+      dynamicSilenceThreshold = Math.max(SILENCE_THRESHOLD_MIN, Math.min(raw, SILENCE_THRESHOLD_MAX));
+      console.log(`[VAD] Ambient noise P90: ${p90.toFixed(1)}, dynamic threshold: ${dynamicSilenceThreshold}`);
+    }
 
     async function startVoiceMode() {
       if (voiceModeActive) return;
@@ -3534,11 +3873,59 @@
 
       voiceModeActive = true;
 
+      // Calibrate VAD threshold based on ambient noise (2-second sample)
+      await calibrateVADThreshold();
+
+      // Monitor for microphone permission revocation mid-session
+      // The 'ended' event fires when the OS or browser revokes mic access
+      const micTrack = voiceStream.getTracks()[0];
+      if (micTrack) {
+        micTrack.onended = () => {
+          if (voiceModeActive) {
+            console.warn('[Voice] Microphone access lost (track ended), ending voice mode');
+            endVoiceMode();
+            toast.warning('Microphone access lost. Voice mode ended.');
+          }
+        };
+      }
+
+      // Preload filler audio clips (hmm, let me think, etc.) for instant playback
+      if (!fillerBuffers) {
+        fillerBuffers = {};
+        const fillerFiles = ['hmm.wav', 'let-me-think.wav', 'one-moment.wav', 'sure.wav'];
+        for (const f of fillerFiles) {
+          fetch(`/audio/fillers/${f}`)
+            .then(r => r.arrayBuffer())
+            .then(buf => audioCtx.decodeAudioData(buf).then(decoded => { fillerBuffers[f] = decoded; }))
+            .catch(() => {});
+        }
+      }
+
       // Request screen wake lock so phone screen stays on during voice session
       if ('wakeLock' in navigator) {
         navigator.wakeLock.request('screen')
           .then(wl => { wakeLock = wl; })
           .catch(() => {}); // Silently ignore if wake lock unavailable
+      }
+
+      // Pre-warm Kokoro TTS: send a tiny synthesis request so the ONNX model
+      // is hot when the first real TTS request arrives (~650ms cold start avoided)
+      fetch(`/api/voice/speak?agent=${encodeURIComponent(currentAgentKey || 'isla')}&text=${encodeURIComponent('.')}`, {
+        method: 'GET'
+      }).catch(() => {}); // Fire-and-forget, don't block voice mode start
+
+      // Session keepalive: ping the agent session every 30s to prevent cold-start
+      // penalty on subsequent voice turns (200-500ms saved per turn)
+      if (voiceKeepAlive) clearInterval(voiceKeepAlive);
+      voiceKeepAlive = setInterval(() => {
+        if (chatWs && chatWs.readyState === 1 && currentAgentKey) {
+          chatWs.send(JSON.stringify({ type: 'voice_keepalive', agent: currentAgentKey }));
+        }
+      }, 30000);
+
+      // Notify server that voice mode is active — enables server-side TTS streaming
+      if (chatWs && chatWs.readyState === 1 && currentAgentKey) {
+        chatWs.send(JSON.stringify({ type: 'voice_subscribe', agent: currentAgentKey }));
       }
 
       toast.info('🎙️ Voice mode on — speak naturally. Press Escape to end.');
@@ -3547,13 +3934,32 @@
 
     function endVoiceMode() {
       voiceModeActive = false;
+      // Notify server to stop server-side TTS streaming
+      wsVoiceSubscribed = false;
+      if (chatWs && chatWs.readyState === 1) {
+        chatWs.send(JSON.stringify({ type: 'voice_unsubscribe' }));
+      }
       stopListening();
       stopTTS();
+      // Clear all pending audio buffers and their timeouts to prevent memory leaks
+      for (const [id, pending] of wsAudioPendingBuffers) {
+        if (pending.timeoutId) clearTimeout(pending.timeoutId);
+      }
+      wsAudioPendingBuffers.clear();
+      currentWSAudioId = null;
       if (voiceStream) { voiceStream.getTracks().forEach(t => t.stop()); voiceStream = null; }
+      // Stop any playing filler and reset filler state
+      stopFillerAudio();
+      fillerBuffers = null; // will re-preload on next voice session start
       // Close AudioContext once — at session end only
       if (audioCtx) { audioCtx.close(); audioCtx = null; audioSource = null; analyser = null; }
-        // Release screen wake lock
+      // Release screen wake lock
       if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
+      // Stop session keepalive
+      if (voiceKeepAlive) { clearInterval(voiceKeepAlive); voiceKeepAlive = null; }
+      // Clear streaming TTS state to prevent stale cursors on restart
+      ttsStreamCursor.clear();
+      ttsStreamComplete.clear();
       setVoiceState('idle');
       toast.info('Voice mode off');
     }
@@ -3565,13 +3971,22 @@
 
       voiceChunks = [];
       hasSpeech = false;
+      speechStartTime = 0; // when speech first detected (for minimum duration check)
       lastSoundTime = Date.now();
 
       // dataArray reused from the single persistent analyser
       const dataArray = new Uint8Array(analyser.frequencyBinCount);
 
       // Start MediaRecorder (new recorder per utterance — stream is reused)
-      voiceRecorder = new MediaRecorder(voiceStream, { mimeType: 'audio/webm' });
+      // iOS Safari doesn't support audio/webm — fall back to audio/mp4 or audio/wav
+      const recorderMimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm'
+        : MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4'
+        : ''; // empty string = browser default
+      voiceRecorder = recorderMimeType
+        ? new MediaRecorder(voiceStream, { mimeType: recorderMimeType })
+        : new MediaRecorder(voiceStream);
+      const actualMimeType = voiceRecorder.mimeType || recorderMimeType || 'audio/webm';
+      console.log('[Voice] MediaRecorder using mimeType:', actualMimeType);
       voiceRecorder.ondataavailable = e => { if (e.data.size > 0) voiceChunks.push(e.data); };
       voiceRecorder.onstop = () => processVoiceInput();
       voiceRecorder.start(100); // collect chunks every 100ms
@@ -3582,11 +3997,13 @@
         analyser.getByteFrequencyData(dataArray);
         const volume = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
 
-        if (volume > SILENCE_THRESHOLD) {
+        if (volume > dynamicSilenceThreshold) {
+          if (!hasSpeech) speechStartTime = Date.now(); // mark speech onset
           hasSpeech = true;
           lastSoundTime = Date.now();
         } else if (hasSpeech && (Date.now() - lastSoundTime) > SILENCE_DURATION) {
           // End of utterance detected
+          voiceLatencyTracker.markVADEnd(); // QA instrumentation
           clearInterval(vadTimer);
           voiceRecorder.stop();
         }
@@ -3601,6 +4018,8 @@
       // Do NOT close audioCtx here — it's reused across cycles, closed only in endVoiceMode()
     }
 
+    const MIN_RECORDING_DURATION = 500; // ms — discard recordings shorter than this to avoid Whisper hallucination
+
     async function processVoiceInput() {
       if (!voiceChunks.length || !hasSpeech) {
         // No speech detected — restart listening
@@ -3608,12 +4027,25 @@
         return;
       }
 
+      // Minimum recording duration check — very short "speech" detections are
+      // often just clicks, bumps, or transient noise that causes Whisper to hallucinate.
+      const speechDurationMs = speechStartTime ? (Date.now() - speechStartTime) : 0;
+      if (speechDurationMs > 0 && speechDurationMs < MIN_RECORDING_DURATION) {
+        console.log(`[Voice] Recording too short (${speechDurationMs}ms < ${MIN_RECORDING_DURATION}ms), discarding`);
+        if (voiceModeActive) setTimeout(() => startListening(), 300);
+        return;
+      }
+
       setVoiceState('processing');
 
       try {
-        const blob = new Blob(voiceChunks, { type: 'audio/webm' });
+        // Use the actual MIME type from the recorder (may be webm, mp4, or browser default)
+        const recMime = voiceRecorder?.mimeType || 'audio/webm';
+        const ext = recMime.includes('mp4') ? 'mp4' : recMime.includes('wav') ? 'wav' : 'webm';
+        const blob = new Blob(voiceChunks, { type: recMime });
         const formData = new FormData();
-        formData.append('audio', blob, 'utterance.webm');
+        formData.append('audio', blob, `utterance.${ext}`);
+        formData.append('mimeType', recMime); // Tell server the format for ffmpeg
 
         const resp = await fetch('/api/voice/transcribe', { method: 'POST', body: formData });
         const data = await resp.json();
@@ -3655,10 +4087,16 @@
       autoScroll(true);
 
       try {
+        // Voice mode: prepend a brief context hint so the agent responds conversationally
+        // This is invisible to the user (not shown in optimistic message above) but
+        // dramatically reduces response length → faster TTS and lower latency
+        const voiceHint = voiceModeActive
+          ? '[Voice conversation — keep response brief and conversational, 1-3 sentences max. No markdown, no lists, no code blocks. Speak naturally as in a phone call.]\n'
+          : '';
         await fetch(`${API_BASE}/chat/${currentAgentKey}/send`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content: text })
+          body: JSON.stringify({ content: voiceHint + text })
         });
       } catch (e) {
         console.error('[Voice] Send failed:', e.message);
@@ -3709,10 +4147,62 @@
       return sentences;
     }
 
+    // Extract speakable clauses from text for low-latency voice mode.
+    // Splits on natural pause points (commas, semicolons, colons, em-dashes)
+    // in addition to sentence boundaries, so TTS starts much sooner.
+    // Each clause must be at least 4 words to avoid sending tiny fragments.
+    function extractClausesForVoice(text) {
+      const clauses = [];
+      // Split on clause boundaries: comma+space, semicolon, colon, em-dash, en-dash
+      // Also split on sentence-ending punctuation (.!?)
+      const parts = text.split(/(?<=[,;:\u2014\u2013])\s+|(?<=[.!?])\s+/);
+      let buffer = '';
+      for (const part of parts) {
+        buffer += (buffer ? ' ' : '') + part;
+        const wordCount = buffer.trim().split(/\s+/).length;
+        // Flush when we have 4+ words AND hit a pause point, or 8+ words regardless
+        const endsWithPause = /[,;:\u2014\u2013.!?]$/.test(buffer.trim());
+        if ((wordCount >= 4 && endsWithPause) || wordCount >= 8) {
+          const clause = buffer.trim();
+          if (clause.length >= 3) clauses.push(clause);
+          buffer = '';
+        }
+      }
+      // Don't flush the trailing buffer here — it's an incomplete clause.
+      // It will be picked up on the next delta or by onStreamFinalVoice.
+      return clauses;
+    }
+
     // Called on every stream_delta while voiceModeActive.
     // cumulativeText: the full accumulated text so far for this agent's response.
     function onStreamDeltaVoice(agentKey, cumulativeText) {
       if (!voiceModeActive) return;
+      stopFillerAudio(); // Stop filler when actual TTS starts arriving
+
+      // Check if WebSocket TTS is active — server handles it, just update state
+      // Server-side streaming TTS eliminates the HTTP round-trip per clause
+      // Use wsVoiceSubscribed (server ACK) not just WS readyState, to avoid
+      // skipping HTTP TTS when server hasn't confirmed voice subscription
+      const wsUp = wsVoiceSubscribed && chatWs && chatWs.readyState === 1;
+      if (wsUp) {
+        // Server-side TTS is active — audio will arrive via WebSocket
+        // Just mark that we're processing streaming TTS
+        if (!wsAudioPlaying && wsAudioQueue.length === 0) {
+          setVoiceState('speaking');
+        }
+        // Mark cursor to prevent double-play by speakResponse
+        const cleanCumulative = stripMarkdownForTTS(cumulativeText);
+        ttsStreamCursor.set(agentKey, cleanCumulative.length);
+        return;
+      }
+
+      // Fallback: WebSocket not available, use HTTP TTS (original behavior)
+      // Diagnostic logging — helps diagnose frequent fallbacks
+      console.warn('[TTS] WS TTS unavailable, using HTTP fallback', {
+        wsVoiceSubscribed,
+        currentAgentKey: agentKey,
+        wsConnected: chatWs ? chatWs.readyState : 'null'
+      });
       // Cursor is tracked in CLEAN (markdown-stripped) text space to avoid
       // coordinate mismatch that caused word repeats at sentence boundaries.
       const cleanCumulative = stripMarkdownForTTS(cumulativeText);
@@ -3720,13 +4210,14 @@
       const newClean = cleanCumulative.slice(cursor);
       if (!newClean) return;
 
-      const sentences = extractSentences(newClean);
-      if (!sentences.length) return;
+      // Use clause-level extraction for faster first-audio in voice mode
+      const clauses = extractClausesForVoice(newClean);
+      if (!clauses.length) return;
 
-      // Queue each complete sentence and advance cursor in clean-text space.
+      // Queue each complete clause and advance cursor in clean-text space.
       let searchFrom = 0;
       let totalAdvance = 0;
-      for (const s of sentences) {
+      for (const s of clauses) {
         const idx = newClean.indexOf(s, searchFrom);
         if (idx === -1) continue;
         const url = `/api/voice/speak?agent=${encodeURIComponent(agentKey)}&text=${encodeURIComponent(s)}`;
@@ -3745,6 +4236,18 @@
     // Called when stream_final arrives — speak any leftover fragment
     function onStreamFinalVoice(agentKey, cumulativeText) {
       if (!voiceModeActive) return;
+
+      // Check if WebSocket TTS is active (server must have confirmed subscription)
+      const wsUp = wsVoiceSubscribed && chatWs && chatWs.readyState === 1;
+      if (wsUp) {
+        // Server-side TTS handled everything — just mark complete
+        ttsStreamCursor.delete(agentKey);
+        ttsStreamComplete.add(agentKey);
+        return;
+      }
+
+      // Fallback: HTTP TTS — log diagnostic info for final fragment
+      console.warn('[TTS] Final fragment using HTTP fallback', { wsVoiceSubscribed, agentKey });
       const cleanCumulative = stripMarkdownForTTS(cumulativeText);
       const cursor = ttsStreamCursor.get(agentKey) ?? 0;
       const remainder = cleanCumulative.slice(cursor).trim();
@@ -3762,10 +4265,12 @@
     function playNextTTS() {
       if (ttsQueue.length === 0) {
         ttsPlaying = false;
+        voiceLatencyTracker.markAllComplete(); // QA instrumentation (all TTS done)
         stopBargeInMonitor();
         if (voiceModeActive) setTimeout(() => startListening(), 400);
         return;
       }
+      stopFillerAudio(); // Stop filler when HTTP TTS starts
       ttsPlaying = true;
       const url = ttsQueue.shift();
       const el = getTTSEl();
@@ -3774,7 +4279,9 @@
       el.onerror = () => { console.error('[TTS] Audio error'); playNextTTS(); };
       el.src = url;
       el.load();
+      const isFirstAudio = !voiceLatencyTracker.firstAudioTime;
       el.play().then(() => {
+        if (isFirstAudio) voiceLatencyTracker.markFirstAudio(); // QA instrumentation (first audio)
         // Start barge-in monitor once audio is actually playing
         if (voiceModeActive) startBargeInMonitor();
       }).catch(e => {
@@ -3786,6 +4293,14 @@
     function stopTTS() {
       ttsQueue = [];
       ttsPlaying = false;
+      wsAudioQueue = [];
+      wsAudioPlaying = false;
+      wsAudioNextTime = 0;
+      // Stop currently playing AudioBufferSourceNode (WS TTS barge-in)
+      if (wsAudioCurrentSource) {
+        try { wsAudioCurrentSource.stop(); } catch {}
+        wsAudioCurrentSource = null;
+      }
       stopBargeInMonitor();
       const el = getTTSEl();
       if (el && !el.paused) { el.pause(); el.src = ''; }
@@ -3797,10 +4312,17 @@
     // is the only sound source. During TTS playback, ambient audio bleeds into the
     // mic on mobile, so we need a meaningfully higher threshold here.
     const BARGE_IN_THRESHOLD = 18;
+    const BARGE_IN_ECHO_DELAY = 250; // ms to suppress barge-in at TTS playback start (echo window)
+    let bargeInSuppressedUntil = 0;  // timestamp until which barge-in detection is suppressed
 
     function startBargeInMonitor() {
       stopBargeInMonitor();
       if (!analyser) return;
+
+      // Suppress barge-in detection for the first BARGE_IN_ECHO_DELAY ms
+      // after TTS starts playing — speaker audio bleeds into the mic and
+      // creates false positives, especially on mobile without headphones.
+      bargeInSuppressedUntil = Date.now() + BARGE_IN_ECHO_DELAY;
 
       // iOS/mobile: AudioContext often suspends when an <audio> element starts
       // playing. Resume it so analyser.getByteFrequencyData returns real data.
@@ -3811,13 +4333,16 @@
       const dataArray = new Uint8Array(analyser.frequencyBinCount);
       let consecutiveHits = 0; // require several consecutive frames to avoid false triggers
       bargeInTimer = setInterval(() => {
-        if (!voiceModeActive || !ttsPlaying) { stopBargeInMonitor(); return; }
+        if (!voiceModeActive || (!ttsPlaying && !wsAudioPlaying)) { stopBargeInMonitor(); return; }
 
         // Re-check AudioContext state on each tick — iOS can re-suspend it
         if (audioCtx && audioCtx.state === 'suspended') {
           audioCtx.resume().catch(() => {});
           return; // skip this tick while resuming
         }
+
+        // Skip barge-in detection during echo suppression window
+        if (Date.now() < bargeInSuppressedUntil) return;
 
         analyser.getByteFrequencyData(dataArray);
         const volume = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;

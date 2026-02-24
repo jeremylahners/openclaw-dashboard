@@ -1,0 +1,8 @@
+{
+  "fillers": [
+    { "name": "hmm", "file": "hmm.wav", "text": "Hmm..." },
+    { "name": "let-me-think", "file": "let-me-think.wav", "text": "Let me think..." },
+    { "name": "one-moment", "file": "one-moment.wav", "text": "One moment..." },
+    { "name": "sure", "file": "sure.wav", "text": "Sure..." }
+  ]
+}

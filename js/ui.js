@@ -473,6 +473,11 @@ export function setupLeftPanelTabs() {
       document.getElementById(`tab-${targetTab}`).classList.add('active');
       
       Storage.setLeftPanelTab(targetTab);
+      
+      // Load token data when tokens tab is clicked
+      if (targetTab === 'tokens') {
+        loadTokenUsageDashboard();
+      }
     });
   });
   
@@ -480,6 +485,134 @@ export function setupLeftPanelTabs() {
   if (savedTab) {
     const tab = document.querySelector(`.left-tab[data-tab="${savedTab}"]`);
     if (tab) tab.click();
+  }
+}
+
+// Load and display token usage dashboard
+export async function loadTokenUsageDashboard() {
+  const container = document.getElementById('tokenUsageContent');
+  if (!container) return;
+  
+  try {
+    const response = await fetch('/token-usage');
+    if (!response.ok) throw new Error('Failed to load token data');
+    
+    const { ok, data } = await response.json();
+    if (!ok) throw new Error('Invalid response');
+    
+    // Update timestamp
+    const updated = document.getElementById('tokensUpdated');
+    if (updated) {
+      updated.textContent = `Updated ${new Date().toLocaleTimeString()}`;
+    }
+    
+    // Render dashboard
+    container.innerHTML = renderTokenDashboard(data);
+    
+    // Initialize charts if ApexCharts is available
+    if (window.ApexCharts) {
+      initializeTokenCharts(data);
+    }
+  } catch (e) {
+    console.error('Token dashboard error:', e);
+    container.innerHTML = `<div class="error">Failed to load token data: ${e.message}</div>`;
+  }
+}
+
+// Render token usage dashboard HTML
+function renderTokenDashboard(data) {
+  const { summary, today, last7days, byAgent } = data;
+  
+  let html = `
+    <div class="token-dashboard">
+      <!-- Summary Cards -->
+      <div class="token-cards">
+        <div class="token-card">
+          <div class="token-label">Today</div>
+          <div class="token-value">${summary.todayTotal?.toLocaleString() || '—'}</div>
+        </div>
+        <div class="token-card">
+          <div class="token-label">Week Avg</div>
+          <div class="token-value">${summary.avgDaily?.toLocaleString() || '—'}</div>
+        </div>
+        <div class="token-card">
+          <div class="token-label">Weekly Total</div>
+          <div class="token-value">${summary.weekTotal?.toLocaleString() || '—'}</div>
+        </div>
+      </div>
+      
+      <!-- 7-Day Chart -->
+      <div class="chart-container">
+        <h3>7-Day Token Usage</h3>
+        <div id="tokenChart"></div>
+      </div>
+      
+      <!-- Top Agents -->
+      <div class="top-agents">
+        <h3>Top Agents (This Week)</h3>
+        <div class="agents-list">
+  `;
+  
+  if (summary.topAgents && summary.topAgents.length > 0) {
+    summary.topAgents.forEach((agent, idx) => {
+      const pct = summary.weekTotal > 0 ? Math.round((agent.tokens / summary.weekTotal) * 100) : 0;
+      html += `
+        <div class="agent-row">
+          <div class="agent-name">${idx + 1}. ${agent.agent}</div>
+          <div class="agent-tokens">
+            <div class="progress-bar">
+              <div class="progress-fill" style="width: ${pct}%"></div>
+            </div>
+            <span class="token-count">${agent.tokens.toLocaleString()} (${pct}%)</span>
+          </div>
+        </div>
+      `;
+    });
+  } else {
+    html += '<div class="no-data">No agent data available</div>';
+  }
+  
+  html += `
+        </div>
+      </div>
+    </div>
+  `;
+  
+  return html;
+}
+
+// Initialize ApexCharts for token visualization
+function initializeTokenCharts(data) {
+  const { last7days } = data;
+  
+  if (!last7days || last7days.length === 0) return;
+  
+  // Reverse to show oldest first
+  const sorted = [...last7days].reverse();
+  
+  const options = {
+    chart: { type: 'area', height: 250, sparkline: { enabled: false } },
+    series: [{
+      name: 'Tokens',
+      data: sorted.map(d => d.tokens)
+    }],
+    xaxis: {
+      categories: sorted.map(d => d.date.split('-').pop()),
+      title: { text: 'Date' }
+    },
+    yaxis: {
+      title: { text: 'Tokens' }
+    },
+    colors: ['#3b82f6'],
+    stroke: { curve: 'smooth', width: 2 },
+    fill: { type: 'gradient', gradient: { opacityFrom: 0.6, opacityTo: 0 } },
+    tooltip: { theme: 'dark' }
+  };
+  
+  try {
+    new ApexCharts(document.getElementById('tokenChart'), options).render();
+  } catch (e) {
+    console.error('Chart render error:', e);
   }
 }
 

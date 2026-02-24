@@ -1,7 +1,7 @@
 {
-  "date": "Wed, Feb 18",
+  "date": "Mon, Feb 23",
   "time": "3:00 PM",
-  "timestamp": 1739912400000,
+  "timestamp": 1740265200000,
   "updates": [
     {
       "agent": "marcus",
@@ -9,13 +9,23 @@
       "name": "Marcus",
       "role": "Dev Manager",
       "items": [
-        {"status": "✅", "text": "All dashboard UI work shipped & stable — mobile tab switching, agent alignment, message deduplication resolved"},
-        {"status": "✅", "text": "Docs written: MOBILE_TESTING.md, DEVELOPMENT.md"},
-        {"status": "⏳", "text": "Holding pattern — no new tasks assigned"}
+        {
+          "status": "✅",
+          "text": "iOS native push notifications (Capacitor) — HIGH priority, 1-2 days out"
+        },
+        {
+          "status": "✅",
+          "text": "PWA test suite with Harper — comprehensive testing (install, offline, sync)"
+        },
+        {
+          "status": "🔧",
+          "text": "Fixed backend API path issue in workspace-config.js — all agent dashboard tabs now loading"
+        }
       ],
-      "learned": "Nothing new today.",
-      "blockers": [],
-      "onDeck": ["Capacitor iOS native push (blocked on Apple Developer setup)", "Agent-to-agent message visibility solution", "MHC caregiver architecture (waiting on Jeremy's decision)"]
+      "learned": "Always verify actual file locations vs. configured paths when UI goes blank. Fixed dashboard agent tabs loading by correcting path from /files/agents/ to /agents/",
+      "blockers": [
+        "Chat Jumping Bug — waiting on Dash's feedback for commit 325d584"
+      ]
     },
     {
       "agent": "harper",
@@ -23,44 +33,64 @@
       "name": "Harper",
       "role": "QA Manager",
       "items": [
-        {"status": "🔄", "text": "Continuing QA on Office Dashboard"},
-        {"status": "⏳", "text": "Marcus's mobile keyboard fix (commit a51fc07) pending real-device confirmation from Jeremy"}
+        {
+          "status": "🔍",
+          "text": "Triaging CSS v14 mobile scroll fix — identified deployment gap"
+        }
       ],
-      "learned": "Role clarity: find bugs → report to Marcus → wait → test his fix. Code review ≠ real device testing.",
-      "blockers": ["No mobile device access for hands-on testing of mobile-specific bugs"]
+      "learned": "CSS deployment risk identified: Marcus's v14 changes went to www/ instead of live office/ path. sync-web.sh copies FROM office TO www, not for active web dev. Need process clarity on canonical CSS location.",
+      "blockers": [
+        "Merge conflict: office/ CSS missing 160 lines from www/. Waiting on Marcus/Jeremy decision: cherry-pick or restructure?"
+      ]
     },
     {
       "agent": "eli",
-      "emoji": "🏗️",
+      "emoji": "🚀",
       "name": "Eli",
       "role": "Chief Architect",
       "items": [
-        {"status": "⏳", "text": "On standby — no new tasks since sports betting project docs on Saturday"}
+        {
+          "status": "✅",
+          "text": "Front Desk Co. technical PRD complete (41KB spec, ready for dev)"
+        },
+        {
+          "status": "✅",
+          "text": "Two validated elevator pitches + MIT license confirmed"
+        },
+        {
+          "status": "✅",
+          "text": "Product name locked: frontdeskco.ai"
+        }
       ],
-      "learned": "Nothing new today.",
-      "blockers": [],
-      "onDeck": ["Phase 1 data collection for sports betting project when ready"]
+      "learned": "Per-customer VPS deployment is cleaner than expected — easier isolation, simpler ops, scales to ~50 customers. Jeremy's relationships are the real distribution engine. ElevenLabs voice quality right for launch.",
+      "blockers": []
     },
     {
       "agent": "sage",
-      "emoji": "🔬",
+      "emoji": "📊",
       "name": "Sage",
       "role": "Researcher",
       "items": [
-        {"status": "⏳", "text": "No active research tasks — available for assignments"}
+        {
+          "status": "⏸",
+          "text": "No active research tasks"
+        }
       ],
-      "learned": "Nothing new today.",
+      "learned": "Nothing new since Thursday",
       "blockers": []
     },
     {
       "agent": "julie",
-      "emoji": "📣",
+      "emoji": "📝",
       "name": "Julie",
       "role": "Marketing",
       "items": [
-        {"status": "⏳", "text": "On standby since wrapping sports betting presentation on Saturday"}
+        {
+          "status": "✅",
+          "text": "Wrote two community posts (Discord + Reddit) for Office Dashboard open-source release"
+        }
       ],
-      "learned": "Nothing new since Saturday's deck work.",
+      "learned": "Nothing new since Thursday",
       "blockers": []
     },
     {
@@ -69,11 +99,16 @@
       "name": "Remy",
       "role": "Chef",
       "items": [
-        {"status": "✅", "text": "Seymour (sourdough starter) Day 7 — hooch + bubbles, sour smell, decent rise. Fixed plate cover → loose kitchen towel for proper gas exchange"},
-        {"status": "✅", "text": "Tomato Bisque + Grilled Cheese executed yesterday"},
-        {"status": "🔄", "text": "Shrimp + Risotto + Honey-Glazed Carrots cooking tonight; Alfredo tomorrow"}
+        {
+          "status": "✅",
+          "text": "Meal planning sync (Apple Reminders ↔ dashboard) live"
+        },
+        {
+          "status": "✅",
+          "text": "Recipe creation & food logging support solid"
+        }
       ],
-      "learned": "Starter covers must be loose (towel, not sealed plate) for proper CO2 escape. Seymour trending toward consistency by days 8-9.",
+      "learned": "Fresh pasta needs 30+ min dough rest + rolling — account for that in dinner timing. File-based AppleScript is more reliable than direct script calls. Jeremy's cooking methods are non-negotiable (marinara, pasta, no shortcuts).",
       "blockers": []
     },
     {
@@ -82,10 +117,20 @@
       "name": "Lena",
       "role": "Gym Coach",
       "items": [
-        {"status": "✅", "text": "7am cron generated today's Cardio + McGill Big 3 workout note"},
-        {"status": "📊", "text": "Yesterday's full Pull session logged — first complete 5-exercise Pull using proper template"}
+        {
+          "status": "🎉",
+          "text": "New weight low: 218.6 lb (Fri) → holding at 220.8 (normal post-low bounce)"
+        },
+        {
+          "status": "✅",
+          "text": "Cardio-push-pull-lower rotation tracking on point"
+        },
+        {
+          "status": "✅",
+          "text": "Dashboard progress tab live (markdown format)"
+        }
       ],
-      "learned": "Lat Pulldown has some detraining since Oct — 85 lb rebuild weight (not 100). Bicep curl needs consistent implement. Face Pull at 35 lb trending up.",
+      "learned": "220 lb plateau broken — 218.6 is solid. Jeremy hitting all 4 cardio intervals consistently. 2-min recovery windows keep HR 120–130 bpm, he's aware & comfortable. Weigh-in CSV pipeline working well.",
       "blockers": []
     },
     {
@@ -94,23 +139,13 @@
       "name": "Val",
       "role": "Finance",
       "items": [
-        {"status": "⏳", "text": "No active projects in flight — available"}
+        {
+          "status": "✅",
+          "text": "Available for projects — no active flights"
+        }
       ],
-      "learned": "Nothing new today.",
-      "blockers": [],
-      "onDeck": ["MHC caregiver feature (waiting on Wilber's backend review)", "Dashboard chart support unused — savings projections, weight tracking, spending breakdowns", "Bonus ~$18,400 take-home expected in next 1-2 weeks"]
-    },
-    {
-      "agent": "dash",
-      "emoji": "📊",
-      "name": "Dash",
-      "role": "Dashboard Dev",
-      "items": [
-        {"status": "✅", "text": "Fixed chat input box height on reload and service worker blocking Files panel API calls — both shipped Saturday"},
-        {"status": "⏳", "text": "No specific tasks queued — reactive/waiting on direction"}
-      ],
-      "learned": "Service workers silently swallowing API errors are tricky — SW was killing every request to localhost:8081 while backend looked fine.",
-      "blockers": ["Running without proper memory setup — no memory/ dir, BOOTSTRAP.md still present, USER.md and IDENTITY.md are blank templates"]
+      "learned": "Nothing new over the weekend",
+      "blockers": []
     },
     {
       "agent": "atlas",
@@ -118,27 +153,51 @@
       "name": "Atlas",
       "role": "Travel",
       "items": [
-        {"status": "❌", "text": "Unavailable — session timed out"}
+        {
+          "status": "✅",
+          "text": "Cancun trip (Mar 23–28) fully planned — Frontier nonstop CLT $787–827 recommended"
+        },
+        {
+          "status": "✅",
+          "text": "Activities & food budgeting complete — total trip: ~$3,444"
+        }
       ],
-      "learned": "N/A",
-      "blockers": ["Session timeout"]
+      "learned": "Budget airlines + intl bag fees swing the math heavily — add $200–300 for checked bags. American raised Mexico bag fees to $45/segment (Feb 18). Aeromexico RDU looked cheaper but 2.5hr drive killed the value.",
+      "blockers": []
     },
     {
       "agent": "nova",
-      "emoji": "👥",
+      "emoji": "📚",
       "name": "Nova",
       "role": "HR",
       "items": [
-        {"status": "❌", "text": "Unavailable — session timed out"}
+        {
+          "status": "✅",
+          "text": "PM AI Workflow playbook — core structure solid for Thursday presentation"
+        },
+        {
+          "status": "✅",
+          "text": "MixPanel features proof point locked (net-new, codebase-grounded, actionable)"
+        }
       ],
-      "learned": "N/A",
-      "blockers": ["Session timeout"]
+      "learned": "Iterative beats one-shot — codebase context is the real differentiator over ChatGPT. 'Actionable without prescriptive' is hard for humans to hit consistently.",
+      "blockers": [
+        "Need Jeremy's AHA! integration improvements list for roadmap section"
+      ]
     }
   ],
   "crossTeam": [
-    {"agent": "Remy", "text": "Sourdough starter covers must be loose for CO2 escape — applies to any fermentation project"},
-    {"agent": "Dash", "text": "Service workers can silently kill API calls even when backend is healthy — good debugging pattern for the whole dev team"},
-    {"agent": "Lena", "text": "Detraining is real after a training gap — gradual rebuild is smarter than jumping back to old weights"},
-    {"agent": "Val", "text": "Jeremy's bonus (~$18,400) expected in 1-2 weeks — worth coordinating with any pending financial decisions"}
+    {
+      "agent": "Marcus & Harper",
+      "text": "CSS deployment gap: www/ and office/ diverging with no sync direction. Harper needs Marcus/Jeremy decision on cherry-pick vs. restructure before shipping fixes."
+    },
+    {
+      "agent": "Eli & Jeremy",
+      "text": "frontdeskco.ai validation sprint: need real prospect pitches this week (Alison for RE pitch, small business owner). Determines Phase 1 infrastructure timelines."
+    },
+    {
+      "agent": "Nova & Jeremy",
+      "text": "PM AI playbook needs Jeremy's AHA! integration improvements list for Thursday presentation roadmap section."
+    }
   ]
 }

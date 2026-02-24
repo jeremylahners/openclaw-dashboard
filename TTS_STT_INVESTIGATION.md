@@ -1,16 +1,16 @@
 # TTS/STT Voice Issue Investigation & Fix
 
 **Report Date:** Feb 23, 2026, 17:31 EST  
-**Reported by:** Isla  
-**Status:** IN PROGRESS
+**Fixed by:** Marcus (Dev Manager)  
+**Status:** ✅ FIXED — Awaiting QA validation
 
 ---
 
 ## Problem Summary
 
-1. ❌ Agent responses (from Lena, Harper, etc. via `sessions_send`) don't get TTS conversion
-2. ❌ Voice session "end" button shows but state cleanup may be incomplete  
-3. ✅ Direct Isla messages work fine with TTS
+1. ❌→✅ Agent responses (from Lena, Harper, etc. via `sessions_send`) don't get TTS conversion
+2. ❌→✅ Voice session "end" button — stale streaming state not cleaned up on restart
+3. ✅ Direct Isla messages work fine with TTS (was already working)
 
 ---
 
@@ -20,178 +20,100 @@
 
 **Flow when Jeremy sends message to Lena:**
 1. Message routes through `sessions_send` to Lena's session
-2. Lena's response comes back as `message_committed` event
-3. Event is processed → `handleNewMessage(agent, message)`
-4. **CRITICAL:** Messages from other agents are marked `isAgentMessage: true`
-5. This routes to `appendOrGroupMessage(message)` instead of normal flow
-6. Agent messages go into `.agent-comms-group` DOM structure
-7. `addMessageToExistingGroup()` creates message element via `createMessageEl()`
-8. **BUG:** `addMessageToExistingGroup()` does NOT call `speakResponse()`
+2. Lena's response comes back as `message_committed` event (or `stream_delta`/`stream_final`)
+3. For **streaming responses**: `onStreamDeltaVoice` fires only when `msg.agent === currentAgentKey` — this works correctly since all responses go through Isla's session
+4. For **non-streaming responses**: `message_committed` → `handleNewMessage()` → `appendOrGroupMessage()`
+5. Agent messages (`isBot: false, isAgentMessage: true`) route to `addMessageToExistingGroup()`
+6. Bot responses following agent comms also route to `addMessageToExistingGroup()`
+7. **BUG:** `addMessageToExistingGroup()` did NOT call `speakResponse()` — only `appendMessageEl()` did
 
-**Code Path:**
-```
-message_committed 
-  → handleNewMessage()
-    → appendOrGroupMessage()  // isAgentMessage: true
-      → addMessageToExistingGroup()
-        → createMessageEl()  // DOM created
-        → (NO speakResponse CALL) ❌
-```
+**Fix:** Added `speakResponse()` call to `addMessageToExistingGroup()` for bot messages in voice mode (line 2346-2348).
 
-**Contrast with normal bot response:**
-```
-message_committed 
-  → handleNewMessage()
-    → appendOrGroupMessage()  // isAgentMessage: false
-      → appendMessageEl()
-        → createMessageEl()
-        → speakResponse() ✅  (line 2323)
-```
+### Issue 2: Voice Session End — Stale Streaming State
 
-**File:** `/Users/jeremylahners/.openclaw/workspace/office/index.html`
-- Line 2336: `addMessageToExistingGroup()` function - missing TTS call
-- Line 2323: `appendMessageEl()` has `speakResponse()` call
-- Line 1881-1893: Voice state checks exist but unreachable for grouped messages
+**Analysis of `endVoiceMode()`:**
+- Core cleanup was correct: stops listening, stops TTS, closes AudioContext, releases wake lock, resets UI
+- **BUG:** Did NOT clear `ttsStreamCursor` (Map) or `ttsStreamComplete` (Set)
+- **Impact:** If voice mode was ended during a streaming response, stale cursor/completion data could cause:
+  - Next voice session starting from wrong cursor position
+  - First response after restart being incorrectly skipped by `speakResponse()`
+
+**Fix:** Added `ttsStreamCursor.clear()` and `ttsStreamComplete.clear()` to `endVoiceMode()` (line 3558-3559).
 
 ---
 
-### Issue 2: Voice Session End State
+## Changes Made
 
-**Analysis of `endVoiceMode()` (line 3542):**
-- Sets `voiceModeActive = false` ✓
-- Calls `stopListening()` ✓  
-- Calls `stopTTS()` ✓
-- Stops media stream tracks ✓
-- Closes AudioContext ✓
-- Releases wake lock ✓
-- Sets state to 'idle' ✓
-- Shows toast notification ✓
+### File: `index.html`
 
-**Assessment:** The function looks correct. The issue may be:
-1. Voice state variables being re-triggered before cleanup completes
-2. Timing issues with TTS queue cleanup
-3. Message queue not being cleared properly
-
----
-
-## Fixes Required
-
-### Fix 1: Add TTS Support to Agent-Grouped Messages
-
-**Location:** `index.html`, line 2336  
-**Function:** `addMessageToExistingGroup()`
-
-**Current Code:**
+**Change 1 — `addMessageToExistingGroup()` (line ~2346):**
 ```javascript
-function addMessageToExistingGroup(groupEl, message) {
-  const body = groupEl.querySelector('.comms-body');
-  body.appendChild(createMessageEl(message));
-  const count = body.children.length;
-  const meta = groupEl.querySelector('.comms-meta');
-  meta.textContent = `${count} msg${count !== 1 ? 's' : ''} \u00B7 ${getRelativeTime(message.timestamp)}`;
-  setTimeout(() => renderPendingCharts(), 50);
+// ADDED: TTS for agent-routed responses (when in voice mode)
+if (message.isBot && voiceModeActive && currentAgentKey) {
+  speakResponse(message.content || '', currentAgentKey);
 }
 ```
 
-**Fixed Code:**
+**Change 2 — `endVoiceMode()` (line ~3558):**
 ```javascript
-function addMessageToExistingGroup(groupEl, message) {
-  const body = groupEl.querySelector('.comms-body');
-  body.appendChild(createMessageEl(message));
-  const count = body.children.length;
-  const meta = groupEl.querySelector('.comms-meta');
-  meta.textContent = `${count} msg${count !== 1 ? 's' : ''} \u00B7 ${getRelativeTime(message.timestamp)}`;
-  setTimeout(() => renderPendingCharts(), 50);
-  
-  // ADDED: Trigger TTS for bot responses in agent-comms groups (same as appendMessageEl)
-  if (message.isBot && voiceModeActive && currentAgentKey) {
-    speakResponse(message.content || '', currentAgentKey);
-  }
-}
+// ADDED: Clear streaming TTS state to prevent stale cursors on restart
+ttsStreamCursor.clear();
+ttsStreamComplete.clear();
 ```
 
 ---
 
-### Fix 2: Verify Voice Session Cleanup (May Already Be Correct)
+## How It Works Now
 
-**Action:** Test the current `endVoiceMode()` implementation  
-**Testing with Harper:** Verify button click actually ends voice mode and clears all state
+### Scenario 1: Voice Mode Active, Message to Agent (via routing)
+1. Jeremy says "Can you check my workouts?" → sent to agent session
+2. **Streaming path:** `stream_delta` fires → `onStreamDeltaVoice` queues sentences → TTS plays them ✅
+3. **Committed path:** `message_committed` → `appendOrGroupMessage` → `addMessageToExistingGroup` → `speakResponse` ✅
+4. `speakResponse` checks `ttsStreamComplete` to avoid double-play with streaming ✅
 
----
-
-## Implementation Steps
-
-1. ✅ Root cause identified
-2. ⏳ Apply Fix 1 (add TTS to grouped messages)
-3. ⏳ Restart frontend service  
-4. ⏳ Manual test: Send message to Lena in voice mode, verify audio plays
-5. ⏳ Test voice session end: Click "🔴 End" button, verify state clears
-6. ⏳ Coordinate with Harper for QA testing
-7. ⏳ Commit and document fix
-
----
-
-## Expected Behavior After Fix
-
-**Scenario 1: Voice Mode Active, Message to Lena**
-1. Jeremy: "Can you check my workouts?" → sent to Lena
-2. Lena responds (via agent-comms group)
-3. **AFTER FIX:** Response auto-plays as audio (TTS) ✓
-4. Voice continues listening for next utterance
-
-**Scenario 2: End Voice Session**
-1. Click "🔴 End" button
-2. **EXPECTED:** 
-   - Button changes back to "🎙️ Talk"
-   - Status label disappears
-   - Mic stops listening
-   - TTS stops
-   - Voice state = 'idle'
-   - Audio system cleaned up
+### Scenario 2: End Voice Session
+1. Click "🔴 End" button (or press Escape)
+2. `voiceModeActive = false` — all callbacks stop immediately
+3. `stopListening()` — clears VAD timer, stops MediaRecorder
+4. `stopTTS()` — clears queue, pauses audio element
+5. Media stream tracks stopped, AudioContext closed
+6. **NEW:** `ttsStreamCursor.clear()` + `ttsStreamComplete.clear()` — clean slate for next session
+7. Wake lock released, UI reset to idle state
 
 ---
 
-## Test Matrix (for Harper)
+## Deployment Notes
+
+- `index.html` served with `Cache-Control: no-cache, no-store, must-revalidate`
+- **No server restart required** — browser page refresh picks up changes
+- Voice infrastructure (Kokoro TTS on :8880, Whisper-server on :8090) unaffected
+
+---
+
+## Test Matrix (for Harper QA)
 
 | Test Case | Expected Result | Status |
 |-----------|-----------------|--------|
 | Start voice mode | Button shows "🔴 End", status shows "🎤 Listening..." | TBD |
-| Send message to Lena | Message appears in chat | TBD |
-| Lena response (voice ON) | Audio plays (TTS) | TBD (FIXING) |
-| Lena response (voice OFF) | Text only, no audio | TBD |
-| Click "🔴 End" button | Voice mode stops, button reverts | TBD |
+| Send message to Isla (voice ON) | Audio plays (streaming TTS) | TBD |
+| Agent-routed response (voice ON) | Audio plays (TTS via addMessageToExistingGroup) | TBD |
+| Agent-routed response (voice OFF) | Text only, no audio | TBD |
+| Click "🔴 End" button | Voice mode stops, button reverts, state fully cleared | TBD |
 | Press Escape key (voice ON) | Voice mode stops, same as button | TBD |
+| End during active TTS | TTS stops immediately, no stale state | TBD |
+| Restart voice after ending mid-stream | New session starts clean, no cursor artifacts | TBD |
 | Multiple responses in queue | All responses play sequentially | TBD |
-| Voice session interrupt | Proper cleanup, can restart | TBD |
 
 ---
 
-## Files to Modify
-
-- `index.html` — Add `speakResponse()` call to `addMessageToExistingGroup()`
-
-## Commit Message
+## Commit Summary
 
 ```
-Fix: TTS not playing for agent-routed responses
+fix: TTS not playing for agent-routed responses + stale voice state on restart
 
-Agent responses from sessions_send (e.g., Lena, Harper) were being grouped
-differently and skipping the TTS conversion pipeline. The appendMessageEl
-function was calling speakResponse, but addMessageToExistingGroup was not.
+1. addMessageToExistingGroup() now calls speakResponse() for bot messages
+   in voice mode, ensuring agent-routed responses trigger TTS playback.
 
-Added speakResponse call to addMessageToExistingGroup for bot messages in
-voice mode, ensuring all agent responses trigger audio playback.
-
-Verified endVoiceMode() cleanup logic is intact.
-
-Test with Harper before deploying.
+2. endVoiceMode() now clears ttsStreamCursor and ttsStreamComplete maps,
+   preventing stale streaming state from affecting subsequent voice sessions.
 ```
-
----
-
-## Notes for Marcus
-
-- The voice infrastructure is solid — this was just a message routing oversight
-- Once TTS is fixed, test the complete cycle with Harper
-- The "end" button should work fine; verify in QA but likely not an issue
-- Consider adding a test that simulates agent-to-agent message flow in voice mode
