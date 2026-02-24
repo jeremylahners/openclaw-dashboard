@@ -1279,24 +1279,27 @@
       try {
         const response = await fetch(`${API_BASE}/token-usage`);
         if (!response.ok) throw new Error('Failed to fetch token usage');
-        const data = await response.json();
+        const result = await response.json();
         
         const content = document.getElementById('tokenUsageContent');
         if (!content) return;
         
-        if (!data.ok || !data.usage) {
+        if (!result.ok || !result.data || !result.data.summary) {
           content.innerHTML = '<div style="color: #888; padding: 20px; text-align: center;">No token data available</div>';
           return;
         }
         
-        const usage = data.usage;
-        const timestamp = new Date(usage.timestamp || Date.now());
-        const timeStr = timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const summary = result.data.summary;
+        const topAgents = summary.topAgents || [];
+        const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         
-        // Calculate percentages (assuming some reasonable limits)
-        const inputPct = Math.min(100, Math.round((usage.inputTokens / 1000000) * 100));
-        const outputPct = Math.min(100, Math.round((usage.outputTokens / 1000000) * 100));
-        const totalPct = Math.min(100, Math.round(((usage.inputTokens + usage.outputTokens) / 1000000) * 100));
+        // Build top agents list
+        let agentsHtml = topAgents.map(a => `
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #222;">
+            <div style="color: #888; font-size: 0.85rem;">${escapeHtml(a.agent)}</div>
+            <div style="font-weight: 600; font-size: 0.9rem;">${a.tokens.toLocaleString()}</div>
+          </div>
+        `).join('');
         
         content.innerHTML = `
           <div style="padding: 15px; color: #ddd; font-size: 0.9rem;">
@@ -1305,34 +1308,26 @@
               <div style="font-size: 0.85rem;">${timeStr}</div>
             </div>
             
-            <div style="margin-bottom: 15px;">
+            <div style="margin-bottom: 15px; background: rgba(59, 130, 246, 0.1); border-radius: 8px; padding: 12px; border-left: 3px solid #3b82f6;">
               <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-                <div style="color: #888; font-size: 0.8rem;">Input Tokens</div>
-                <div style="font-weight: 600;">${(usage.inputTokens || 0).toLocaleString()}</div>
-              </div>
-              <div style="background: #1a1a2e; border-radius: 4px; height: 8px; overflow: hidden;">
-                <div style="background: linear-gradient(90deg, #4ade80, #22c55e); height: 100%; width: ${Math.min(100, inputPct)}%;"></div>
-              </div>
-            </div>
-            
-            <div style="margin-bottom: 15px;">
-              <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-                <div style="color: #888; font-size: 0.8rem;">Output Tokens</div>
-                <div style="font-weight: 600;">${(usage.outputTokens || 0).toLocaleString()}</div>
-              </div>
-              <div style="background: #1a1a2e; border-radius: 4px; height: 8px; overflow: hidden;">
-                <div style="background: linear-gradient(90deg, #60a5fa, #3b82f6); height: 100%; width: ${Math.min(100, outputPct)}%;"></div>
-              </div>
-            </div>
-            
-            <div style="background: rgba(59, 130, 246, 0.1); border-radius: 8px; padding: 12px; border-left: 3px solid #3b82f6;">
-              <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-                <div style="color: #888; font-size: 0.8rem;">Total</div>
-                <div style="font-weight: 600; color: #60a5fa;">${(usage.totalTokens || 0).toLocaleString()}</div>
+                <div style="color: #888; font-size: 0.8rem;">This Week</div>
+                <div style="font-weight: 600; color: #60a5fa;">${(summary.weekTotal || 0).toLocaleString()}</div>
               </div>
               <div style="font-size: 0.75rem; color: #666; margin-top: 4px;">
-                ${usage.model ? 'Model: ' + usage.model : 'Session tokens'}
+                Avg/day: ${(summary.avgDaily || 0).toLocaleString()}
               </div>
+            </div>
+            
+            <div style="margin-bottom: 15px; background: rgba(34, 197, 94, 0.1); border-radius: 8px; padding: 12px; border-left: 3px solid #22c55e;">
+              <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                <div style="color: #888; font-size: 0.8rem;">Today</div>
+                <div style="font-weight: 600; color: #4ade80;">${(summary.todayTotal || 0).toLocaleString()}</div>
+              </div>
+            </div>
+            
+            <div style="margin-bottom: 10px; color: #888; font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Top Agents</div>
+            <div style="background: #1a1a2e; border-radius: 8px; padding: 8px;">
+              ${agentsHtml || '<div style="color: #666; padding: 8px; text-align: center;">No agent data</div>'}
             </div>
           </div>
         `;
