@@ -1112,7 +1112,7 @@
         if (response.ok) {
           const data = await response.json();
           if (data.ok) {
-            showFileViewer(fileName, data.content);
+            showFileViewer(fileName, data.content, filePath);
           }
         }
       } catch (e) {
@@ -1121,9 +1121,13 @@
     }
 
     function showBinaryViewer(filePath, fileName, ext, types) {
+      // Close any existing viewer first
+      closeCurrentFileViewer();
+
       const fileUrl = `${API_BASE}/file/${encodeURIComponent(filePath)}`;
       const viewer = document.createElement('div');
       viewer.className = 'file-viewer';
+      viewer.dataset.viewerId = filePath;
 
       let bodyHtml;
       if (types.imageExts.has(ext)) {
@@ -1152,6 +1156,7 @@
         ${bodyHtml}`;
 
       document.body.appendChild(viewer);
+      currentFileViewer = viewer;
       document.body.style.overflow = 'hidden';
 
       // Close button in header
@@ -1160,8 +1165,7 @@
         closeHeader.addEventListener('click', (e) => {
           e.preventDefault();
           e.stopPropagation();
-          document.body.style.overflow = '';
-          viewer.remove();
+          closeCurrentFileViewer();
         });
       }
 
@@ -1171,23 +1175,46 @@
         closeBtn.addEventListener('click', (e) => {
           e.preventDefault();
           e.stopPropagation();
-          document.body.style.overflow = '';
-          viewer.remove();
+          closeCurrentFileViewer();
         });
       }
 
       // Click outside modal to close (tap the dark overlay)
       viewer.addEventListener('click', (e) => {
         if (e.target === viewer) {
-          document.body.style.overflow = '';
-          viewer.remove();
+          closeCurrentFileViewer();
         }
       });
     }
 
-    function showFileViewer(fileName, content) {
+    // Keep track of current file viewer and blob URLs for cleanup
+    let currentFileViewer = null;
+    const blobUrlCache = new Map();
+
+    function closeCurrentFileViewer() {
+      if (currentFileViewer) {
+        // Revoke any blob URLs associated with this viewer
+        const viewerId = currentFileViewer.dataset.viewerId;
+        if (blobUrlCache.has(viewerId)) {
+          URL.revokeObjectURL(blobUrlCache.get(viewerId));
+          blobUrlCache.delete(viewerId);
+        }
+        document.body.style.overflow = '';
+        currentFileViewer.remove();
+        currentFileViewer = null;
+      }
+    }
+
+    function showFileViewer(fileName, content, filePath) {
+      // Close any existing viewer first
+      closeCurrentFileViewer();
+
       const viewer = document.createElement('div');
       viewer.className = 'file-viewer';
+      
+      // Use full file path as unique identifier (or fileName if path not provided)
+      const viewerId = filePath || fileName;
+      viewer.dataset.viewerId = viewerId;
 
       // Check file type
       const isMarkdown = fileName.toLowerCase().endsWith('.md');
@@ -1200,6 +1227,7 @@
         // Render HTML in an iframe
         const blob = new Blob([content], { type: 'text/html' });
         blobUrl = URL.createObjectURL(blob);
+        blobUrlCache.set(viewerId, blobUrl);
         viewer.innerHTML = `
           <div class="file-viewer-header">
             <h2>📄 ${escapeHtml(fileName)}</h2>
@@ -1231,39 +1259,25 @@
       }
 
       document.body.appendChild(viewer);
+      currentFileViewer = viewer;
 
       // Prevent body scroll on mobile
       document.body.style.overflow = 'hidden';
 
       // Add close button event listener
       const closeBtn = viewer.querySelector('.file-viewer-close');
-      console.log('[File Viewer] Close button found:', closeBtn);
       if (closeBtn) {
         closeBtn.addEventListener('click', (e) => {
-          console.log('[File Viewer] Close button clicked!');
           e.preventDefault();
           e.stopPropagation();
-          if (blobUrl) {
-            console.log('[File Viewer] Revoking blob URL:', blobUrl);
-            URL.revokeObjectURL(blobUrl);
-          }
-          console.log('[File Viewer] Removing viewer');
-          document.body.style.overflow = '';
-          viewer.remove();
+          closeCurrentFileViewer();
         });
-        console.log('[File Viewer] Event listener attached');
-      } else {
-        console.error('[File Viewer] Close button NOT found!');
       }
 
       // Click outside modal to close (tap the dark overlay)
       viewer.addEventListener('click', (e) => {
         if (e.target === viewer) {
-          if (blobUrl) {
-            URL.revokeObjectURL(blobUrl);
-          }
-          document.body.style.overflow = '';
-          viewer.remove();
+          closeCurrentFileViewer();
         }
       });
     }
