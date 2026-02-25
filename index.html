@@ -2669,18 +2669,40 @@
       }
     }
 
-    function autoScroll(force = false) {
-      const threshold = 150;
+    // Track user scroll position to respect manual scrolling
+    let userManuallyScrolled = false;
+    let lastAutoScrollTime = 0;
+    
+    chatMessages.addEventListener('scroll', () => {
       const distFromBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight;
-      if (force || distFromBottom < threshold) {
-        // Use setTimeout with 0 delay to ensure scroll happens after current render cycle completes
-        // This prevents scrollHeight from being stale when DOM is still being laid out
-        setTimeout(() => {
-          requestAnimationFrame(() => {
-            chatMessages.scrollTop = chatMessages.scrollHeight;
-          });
-        }, 0);
-      }
+      // If user scrolls more than 300px from bottom, they're intentionally reading history
+      userManuallyScrolled = distFromBottom > 300;
+    }, { passive: true });
+
+    function autoScroll(force = false) {
+      const threshold = 100; // Reduced from 150 to be less aggressive
+      const distFromBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight;
+      
+      // If user has manually scrolled up, don't auto-scroll (unless force=true)
+      if (!force && userManuallyScrolled) return;
+      
+      // Only scroll if we're near bottom or force is true
+      if (!force && distFromBottom > threshold) return;
+      
+      // Debounce: don't scroll more than once per 200ms
+      const now = Date.now();
+      if (now - lastAutoScrollTime < 200) return;
+      lastAutoScrollTime = now;
+      
+      // Use setTimeout with 0 delay to ensure scroll happens after current render cycle completes
+      // This prevents scrollHeight from being stale when DOM is still being laid out
+      setTimeout(() => {
+        requestAnimationFrame(() => {
+          chatMessages.scrollTop = chatMessages.scrollHeight;
+          // Reset manual scroll flag after successful auto-scroll (user is now at bottom)
+          userManuallyScrolled = false;
+        });
+      }, 0);
     }
 
     // Chart ID counter for unique chart containers
