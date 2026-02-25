@@ -2673,9 +2673,13 @@
       const threshold = 150;
       const distFromBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight;
       if (force || distFromBottom < threshold) {
-        requestAnimationFrame(() => {
-          chatMessages.scrollTop = chatMessages.scrollHeight;
-        });
+        // Use setTimeout with 0 delay to ensure scroll happens after current render cycle completes
+        // This prevents scrollHeight from being stale when DOM is still being laid out
+        setTimeout(() => {
+          requestAnimationFrame(() => {
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+          });
+        }, 0);
       }
     }
 

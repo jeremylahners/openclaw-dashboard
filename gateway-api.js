@@ -8,7 +8,77 @@ const { execFile, spawn } = require('child_process');
 const webpush = require('web-push');
 const { WebSocketServer, WebSocket } = require('ws');
 const { EdgeTTS } = require('node-edge-tts');
-const chatDb = require('./db.js');
+// In-memory message store (replaces chat.db SQLite)
+// Used for dedup, broadcasting, and recent-message tracking.
+// History reads are served from Gateway's native chat.history API.
+const messageStore = {
+  _seqCounter: 0,
+  _idempotencyKeys: new Set(),     // track seen idempotency keys
+  _recentMessages: new Map(),       // agent -> [{content, timestamp, role}] (last 100 per agent)
+
+  nextSeq() { return ++this._seqCounter; },
+
+  // Check & add idempotency key. Returns true if duplicate.
+  isDuplicate(idempotencyKey) {
+    if (!idempotencyKey) return false;
+    if (this._idempotencyKeys.has(idempotencyKey)) return true;
+    this._idempotencyKeys.add(idempotencyKey);
+    // Cap the set size to prevent unbounded growth
+    if (this._idempotencyKeys.size > 50000) {
+      const iter = this._idempotencyKeys.values();
+      for (let i = 0; i < 10000; i++) iter.next();
+      // Rebuild from remaining
+      const remaining = new Set();
+      for (const v of this._idempotencyKeys) { if (remaining.size >= 40000) break; remaining.add(v); }
+      // Actually, just trim oldest entries
+      const arr = [...this._idempotencyKeys];
+      this._idempotencyKeys = new Set(arr.slice(-40000));
+    }
+    return false;
+  },
+
+  // Check content duplicate (same agent, role, content within 10s)
+  isContentDuplicate(agent, role, content, timestamp) {
+    const recent = this._recentMessages.get(agent) || [];
+    return recent.some(m =>
+      m.role === role &&
+      m.content.replace(/\s+/g, ' ').trim() === content.replace(/\s+/g, ' ').trim() &&
+      Math.abs(m.timestamp - timestamp) < 10000
+    );
+  },
+
+  // Record a message and return {seq, duplicate}
+  addMessage(agent, role, content, timestamp, idempotencyKey = null, metadata = null) {
+    // Check idempotency key
+    if (idempotencyKey && this._idempotencyKeys.has(idempotencyKey)) {
+      return { seq: 0, duplicate: true };
+    }
+
+    // Check content duplicate
+    if (this.isContentDuplicate(agent, role, content, timestamp)) {
+      console.log(`[MEM] Content duplicate detected for ${agent}: "${content.substring(0, 30)}..."`);
+      return { seq: 0, duplicate: true };
+    }
+
+    // Record it
+    if (idempotencyKey) this._idempotencyKeys.add(idempotencyKey);
+    const seq = this.nextSeq();
+
+    // Track recent messages per agent (keep last 100)
+    if (!this._recentMessages.has(agent)) this._recentMessages.set(agent, []);
+    const agentMsgs = this._recentMessages.get(agent);
+    agentMsgs.push({ content, timestamp, role, seq });
+    if (agentMsgs.length > 100) agentMsgs.splice(0, agentMsgs.length - 100);
+
+    return { seq, duplicate: false };
+  },
+
+  // Get recent user messages for dedup during polling
+  getRecentUserMessagesForAgent(agent, sinceTimestamp) {
+    const recent = this._recentMessages.get(agent) || [];
+    return recent.filter(m => m.role === 'user' && m.timestamp > sinceTimestamp);
+  }
+};
 
 // ============================================================
 // VOICE - Agent TTS voice mapping (Microsoft Edge TTS neural voices)
@@ -343,7 +413,7 @@ async function pollAgentSessionsFiltered(agentsToPoll) {
           const isInterSession = provenance?.kind === 'inter_session';
 
           if (!isInterSession) {
-            const recentMsgs = chatDb.getRecentUserMessagesForAgent(agentKey, msgTimestamp - 60000);
+            const recentMsgs = messageStore.getRecentUserMessagesForAgent(agentKey, msgTimestamp - 60000);
             const normalizedText = text.replace(/\s+/g, ' ').trim();
             const alreadyStored = recentMsgs.some(m =>
               m.content.replace(/\s+/g, ' ').trim() === normalizedText &&
@@ -371,7 +441,7 @@ async function pollAgentSessionsFiltered(agentsToPoll) {
             senderName: senderName || null,
             sourceSessionKey: provenance?.sourceSessionKey || null
           };
-          const result = chatDb.addMessage(agentKey, 'user', text, msgTimestamp, idempotencyKey, metadata);
+          const result = messageStore.addMessage(agentKey, 'user', text, msgTimestamp, idempotencyKey, metadata);
 
           if (!result.duplicate) {
             console.log(`[GW] 📨 New incoming message for ${agentKey}: "${text.substring(0, 50)}..."`);
@@ -861,7 +931,7 @@ function handleGatewayChatEvent(payload) {
       senderName: senderName || null,
       sourceSessionKey: provenance?.sourceSessionKey || null
     };
-    const result = chatDb.addMessage(agent, 'user', text, now, idempotencyKey, metadata);
+    const result = messageStore.addMessage(agent, 'user', text, now, idempotencyKey, metadata);
 
     if (!result.duplicate) {
       console.log(`[GW] 📨 Incoming message for ${agent} from ${senderName || 'unknown agent'}: "${text.substring(0, 50)}..."`);
@@ -961,10 +1031,10 @@ function handleGatewayChatEvent(payload) {
       return;
     }
 
-    // Commit to SQLite
+    // Commit to in-memory store (history served from Gateway)
     const now = Date.now();
     const idempotencyKey = `gw-${agent}-${now}-${Math.random().toString(36).slice(2)}`;
-    const result = chatDb.addMessage(agent, 'assistant', accumulatedText, now, idempotencyKey);
+    const result = messageStore.addMessage(agent, 'assistant', accumulatedText, now, idempotencyKey);
 
     if (!result.duplicate) {
       const clientMsg = formatMessageForClient({
@@ -1923,10 +1993,10 @@ const server = http.createServer(async (req, res) => {
           return;
         }
 
-        // 1. Commit user message to SQLite
+        // 1. Record in memory for dedup (history served from Gateway)
         const now = Date.now();
         const idempotencyKey = `user-${now}-${Math.random().toString(36).slice(2)}`;
-        const result = chatDb.addMessage(agentKey, 'user', content, now, idempotencyKey);
+        const result = messageStore.addMessage(agentKey, 'user', content, now, idempotencyKey);
 
         // Mark agent as active for smart polling (user just messaged them)
         markAgentActive(agentKey);
@@ -1947,7 +2017,7 @@ const server = http.createServer(async (req, res) => {
             // Commit the smart response as an assistant message
             const smartNow = Date.now();
             const smartKey = `smart-${agentKey}-${smartNow}-${Math.random().toString(36).slice(2)}`;
-            const smartResult = chatDb.addMessage(agentKey, 'assistant', smartResponse, smartNow, smartKey);
+            const smartResult = messageStore.addMessage(agentKey, 'assistant', smartResponse, smartNow, smartKey);
 
             // Broadcast to clients
             const smartMsg = formatMessageForClient({
@@ -1987,7 +2057,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Chat v2: Get messages from SQLite
+  // Chat v2: Get messages from Gateway (was SQLite)
   else if (req.url.startsWith('/chat/') && req.method === 'GET') {
     const agentKey = req.url.split('/')[2];
     if (!agentSessions[agentKey]) {
@@ -1995,12 +2065,27 @@ const server = http.createServer(async (req, res) => {
       res.end(JSON.stringify({ ok: false, error: 'Agent not found' }));
       return;
     }
-    const messages = chatDb.getMessages(agentKey)
-      .filter(row => !isSystemContextMessage(row.content));
-    res.end(JSON.stringify({ ok: true, messages: messages.map(formatMessageForClient) }));
+    try {
+      const history = await gwRequest('chat.history', {
+        sessionKey: agentSessions[agentKey],
+        limit: 100
+      });
+      const messages = (history?.messages || [])
+        .filter(m => (m.role === 'user' || m.role === 'assistant'))
+        .map(m => {
+          const content = extractMessageText(m);
+          return { agent: agentKey, role: m.role, content, timestamp: m.timestamp || Date.now(), metadata: null };
+        })
+        .filter(row => row.content && !isSystemContextMessage(row.content) && !NOISE_REPLIES.test(row.content.trim()))
+        .map((row, idx) => formatMessageForClient({ ...row, seq: idx + 1 }));
+      res.end(JSON.stringify({ ok: true, messages }));
+    } catch (e) {
+      console.error('[Chat-GET] Gateway history error:', e.message);
+      res.end(JSON.stringify({ ok: true, messages: [] }));
+    }
   }
   
-  // Chat v2: Commit a message to SQLite and broadcast
+  // Chat v2: Commit a message and broadcast (in-memory dedup)
   else if (req.url.startsWith('/chat/') && req.method === 'POST') {
     const agentKey = req.url.split('/')[2];
     let body = '';
@@ -2027,7 +2112,7 @@ const server = http.createServer(async (req, res) => {
         }
 
         const ts = timestamp || Date.now();
-        const result = chatDb.addMessage(agentKey, role, content, ts, idempotencyKey || null);
+        const result = messageStore.addMessage(agentKey, role, content, ts, idempotencyKey || null);
 
         if (!result.duplicate) {
           const clientMsg = formatMessageForClient({
@@ -2727,28 +2812,30 @@ wss.on('connection', (ws) => {
     if (msg.type === 'subscribe' && msg.agent && agentSessions[msg.agent]) {
       client.subscribedAgent = msg.agent;
 
-      // If client sends lastSeq, only send messages since then
-      let messages;
-      if (msg.lastSeq && typeof msg.lastSeq === 'number') {
-        messages = chatDb.getMessagesSince(msg.agent, msg.lastSeq)
-          .filter(row => !isSystemContextMessage(row.content));
-        if (messages.length > 0) {
-          ws.send(JSON.stringify({
-            type: 'history_update',
-            agent: msg.agent,
-            messages: messages.map(formatMessageForClient)
-          }));
-        }
-      } else {
-        messages = chatDb.getMessages(msg.agent)
-          .filter(row => !isSystemContextMessage(row.content));
-        ws.send(JSON.stringify({
-          type: 'history',
-          agent: msg.agent,
-          messages: messages.map(formatMessageForClient)
-        }));
-      }
-      console.log('[WS-Chat] Client subscribed to:', msg.agent, '- sent', (messages || []).length, 'messages', msg.lastSeq ? `(since seq ${msg.lastSeq})` : '(full)');
+      // Fetch history from Gateway (replaces SQLite reads)
+      gwRequest('chat.history', { sessionKey: agentSessions[msg.agent], limit: 100 })
+        .then(history => {
+          const messages = (history?.messages || [])
+            .filter(m => (m.role === 'user' || m.role === 'assistant'))
+            .map(m => {
+              const content = extractMessageText(m);
+              return { agent: msg.agent, role: m.role, content, timestamp: m.timestamp || Date.now(), metadata: null };
+            })
+            .filter(row => row.content && !isSystemContextMessage(row.content) && !NOISE_REPLIES.test(row.content.trim()))
+            .map((row, idx) => formatMessageForClient({ ...row, seq: idx + 1 }));
+
+          if (messages.length > 0 && ws.readyState === 1) {
+            ws.send(JSON.stringify({
+              type: msg.lastSeq ? 'history_update' : 'history',
+              agent: msg.agent,
+              messages
+            }));
+          }
+          console.log('[WS-Chat] Client subscribed to:', msg.agent, '- sent', messages.length, 'messages from Gateway');
+        })
+        .catch(err => {
+          console.error('[WS-Chat] Gateway history error for', msg.agent, ':', err.message);
+        });
     }
 
     if (msg.type === 'unsubscribe') {
@@ -2785,19 +2872,28 @@ wss.on('connection', (ws) => {
       handleVoiceTTS(client, msg.agent, msg.text);
     }
 
-    // Multi-agent sync: client sends lastSeq per agent, server returns any new messages
+    // Multi-agent sync: fetch latest from Gateway for each agent
+    // Note: lastSeq is no longer meaningful with Gateway-based history,
+    // but we still send any messages the client may not have
     if (msg.type === 'sync' && msg.agents) {
-      for (const [agent, lastSeq] of Object.entries(msg.agents)) {
+      for (const [agent] of Object.entries(msg.agents)) {
         if (!agentSessions[agent]) continue;
-        const newMessages = chatDb.getMessagesSince(agent, lastSeq)
-          .filter(row => !isSystemContextMessage(row.content));
-        if (newMessages.length > 0) {
-          ws.send(JSON.stringify({
-            type: 'sync_update',
-            agent,
-            messages: newMessages.map(formatMessageForClient)
-          }));
-        }
+        gwRequest('chat.history', { sessionKey: agentSessions[agent], limit: 20 })
+          .then(history => {
+            const messages = (history?.messages || [])
+              .filter(m => (m.role === 'user' || m.role === 'assistant'))
+              .map(m => {
+                const content = extractMessageText(m);
+                return { agent, role: m.role, content, timestamp: m.timestamp || Date.now(), metadata: null };
+              })
+              .filter(row => row.content && !isSystemContextMessage(row.content) && !NOISE_REPLIES.test(row.content.trim()))
+              .map((row, idx) => formatMessageForClient({ ...row, seq: idx + 1 }));
+
+            if (messages.length > 0 && ws.readyState === 1) {
+              ws.send(JSON.stringify({ type: 'sync_update', agent, messages }));
+            }
+          })
+          .catch(() => {}); // Ignore sync errors silently
       }
     }
   });

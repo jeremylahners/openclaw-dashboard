@@ -1,203 +1,60 @@
 {
-  "date": "Mon, Feb 23",
-  "time": "3:00 PM",
-  "timestamp": 1740265200000,
+  "date": "2026-02-24",
+  "time": "15:00:00",
+  "timezone": "America/New_York",
   "updates": [
     {
-      "agent": "marcus",
-      "emoji": "🔧",
-      "name": "Marcus",
-      "role": "Dev Manager",
-      "items": [
-        {
-          "status": "✅",
-          "text": "iOS native push notifications (Capacitor) — HIGH priority, 1-2 days out"
-        },
-        {
-          "status": "✅",
-          "text": "PWA test suite with Harper — comprehensive testing (install, offline, sync)"
-        },
-        {
-          "status": "🔧",
-          "text": "Fixed backend API path issue in workspace-config.js — all agent dashboard tabs now loading"
-        }
-      ],
-      "learned": "Always verify actual file locations vs. configured paths when UI goes blank. Fixed dashboard agent tabs loading by correcting path from /files/agents/ to /agents/",
-      "blockers": [
-        "Chat Jumping Bug — waiting on Dash's feedback for commit 325d584"
-      ]
-    },
-    {
-      "agent": "harper",
-      "emoji": "🧪",
-      "name": "Harper",
-      "role": "QA Manager",
-      "items": [
-        {
-          "status": "🔍",
-          "text": "Triaging CSS v14 mobile scroll fix — identified deployment gap"
-        }
-      ],
-      "learned": "CSS deployment risk identified: Marcus's v14 changes went to www/ instead of live office/ path. sync-web.sh copies FROM office TO www, not for active web dev. Need process clarity on canonical CSS location.",
-      "blockers": [
-        "Merge conflict: office/ CSS missing 160 lines from www/. Waiting on Marcus/Jeremy decision: cherry-pick or restructure?"
-      ]
-    },
-    {
       "agent": "eli",
-      "emoji": "🚀",
-      "name": "Eli",
-      "role": "Chief Architect",
-      "items": [
-        {
-          "status": "✅",
-          "text": "Front Desk Co. technical PRD complete (41KB spec, ready for dev)"
-        },
-        {
-          "status": "✅",
-          "text": "Two validated elevator pitches + MIT license confirmed"
-        },
-        {
-          "status": "✅",
-          "text": "Product name locked: frontdeskco.ai"
-        }
-      ],
-      "learned": "Per-customer VPS deployment is cleaner than expected — easier isolation, simpler ops, scales to ~50 customers. Jeremy's relationships are the real distribution engine. ElevenLabs voice quality right for launch.",
-      "blockers": []
+      "name": "Eli (Chief Architect)",
+      "working_on": "Waiting on validation feedback from pitch conversations. Preparing Phase 1 scaffolding: Docker Compose templates, bootstrap scripts, Pipecat initialization configs.",
+      "blockers": "None — Jeremy has pitches and needs time for prospect conversations.",
+      "learned": "Core value prop is reliability, not AI. Real estate agents consistently want a system that never misses calls during their working hours. Simplifying pitch narrative accordingly."
     },
     {
       "agent": "sage",
-      "emoji": "📊",
-      "name": "Sage",
-      "role": "Researcher",
-      "items": [
-        {
-          "status": "⏸",
-          "text": "No active research tasks"
-        }
-      ],
-      "learned": "Nothing new since Thursday",
-      "blockers": []
+      "name": "Sage (Researcher)",
+      "working_on": "No active research tasks",
+      "blockers": "None",
+      "learned": "Nothing new to report"
     },
     {
       "agent": "julie",
-      "emoji": "📝",
-      "name": "Julie",
-      "role": "Marketing",
-      "items": [
-        {
-          "status": "✅",
-          "text": "Wrote two community posts (Discord + Reddit) for Office Dashboard open-source release"
-        }
-      ],
-      "learned": "Nothing new since Thursday",
-      "blockers": []
+      "name": "Julie (Marketing)",
+      "working_on": "Waiting for feedback on Office Dashboard posts from last week",
+      "blockers": "None",
+      "learned": "Nothing new since Monday"
     },
     {
       "agent": "remy",
-      "emoji": "👨‍🍳",
-      "name": "Remy",
-      "role": "Chef",
-      "items": [
-        {
-          "status": "✅",
-          "text": "Meal planning sync (Apple Reminders ↔ dashboard) live"
-        },
-        {
-          "status": "✅",
-          "text": "Recipe creation & food logging support solid"
-        }
-      ],
-      "learned": "Fresh pasta needs 30+ min dough rest + rolling — account for that in dinner timing. File-based AppleScript is more reliable than direct script calls. Jeremy's cooking methods are non-negotiable (marinara, pasta, no shortcuts).",
-      "blockers": []
-    },
-    {
-      "agent": "lena",
-      "emoji": "💪",
-      "name": "Lena",
-      "role": "Gym Coach",
-      "items": [
-        {
-          "status": "🎉",
-          "text": "New weight low: 218.6 lb (Fri) → holding at 220.8 (normal post-low bounce)"
-        },
-        {
-          "status": "✅",
-          "text": "Cardio-push-pull-lower rotation tracking on point"
-        },
-        {
-          "status": "✅",
-          "text": "Dashboard progress tab live (markdown format)"
-        }
-      ],
-      "learned": "220 lb plateau broken — 218.6 is solid. Jeremy hitting all 4 cardio intervals consistently. 2-min recovery windows keep HR 120–130 bpm, he's aware & comfortable. Weigh-in CSV pipeline working well.",
-      "blockers": []
+      "name": "Remy (Chef)",
+      "working_on": "Monitoring dinner plan sync (Apple Reminders ↔ dashboard), standing by for recipe requests and meal prep coordination",
+      "blockers": "None",
+      "learned": "7am workout note bug from Sunday (showing dinner instead of workout) — root cause on cron job still pending. Jeremy values precision over speed in cooking."
     },
     {
       "agent": "val",
-      "emoji": "💰",
-      "name": "Val",
-      "role": "Finance",
-      "items": [
-        {
-          "status": "✅",
-          "text": "Available for projects — no active flights"
-        }
-      ],
-      "learned": "Nothing new over the weekend",
-      "blockers": []
+      "name": "Val (Finance)",
+      "working_on": "No active projects. Available for MHC work, Office dashboard, financial tracking, meal planning.",
+      "blockers": "None",
+      "learned": "Bonus should be in — worth checking. MHC caregiver feature ready pending backend review."
     },
     {
       "agent": "atlas",
-      "emoji": "✈️",
-      "name": "Atlas",
-      "role": "Travel",
-      "items": [
-        {
-          "status": "✅",
-          "text": "Cancun trip (Mar 23–28) fully planned — Frontier nonstop CLT $787–827 recommended"
-        },
-        {
-          "status": "✅",
-          "text": "Activities & food budgeting complete — total trip: ~$3,444"
-        }
-      ],
-      "learned": "Budget airlines + intl bag fees swing the math heavily — add $200–300 for checked bags. American raised Mexico bag fees to $45/segment (Feb 18). Aeromexico RDU looked cheaper but 2.5hr drive killed the value.",
-      "blockers": []
-    },
-    {
-      "agent": "nova",
-      "emoji": "📚",
-      "name": "Nova",
-      "role": "HR",
-      "items": [
-        {
-          "status": "✅",
-          "text": "PM AI Workflow playbook — core structure solid for Thursday presentation"
-        },
-        {
-          "status": "✅",
-          "text": "MixPanel features proof point locked (net-new, codebase-grounded, actionable)"
-        }
-      ],
-      "learned": "Iterative beats one-shot — codebase context is the real differentiator over ChatGPT. 'Actionable without prescriptive' is hard for humans to hit consistently.",
-      "blockers": [
-        "Need Jeremy's AHA! integration improvements list for roadmap section"
-      ]
+      "name": "Atlas (Travel)",
+      "working_on": "Standing by for scuba certification pricing confirmation for Cancun trip budget finalization",
+      "blockers": "Waiting for scuba cert quote from Jeremy",
+      "learned": "Budget airline bag fees: $50–60/bag for international. American Airlines Mexico fees now $45/segment as of Feb 18. Driving time to airport dramatically affects value."
     }
   ],
+  "no_response": [
+    "Marcus (Dev Manager) — timeout",
+    "Harper (QA Manager) — timeout",
+    "Lena (Gym Coach) — timeout",
+    "Nova (HR) — timeout"
+  ],
   "crossTeam": [
-    {
-      "agent": "Marcus & Harper",
-      "text": "CSS deployment gap: www/ and office/ diverging with no sync direction. Harper needs Marcus/Jeremy decision on cherry-pick vs. restructure before shipping fixes."
-    },
-    {
-      "agent": "Eli & Jeremy",
-      "text": "frontdeskco.ai validation sprint: need real prospect pitches this week (Alison for RE pitch, small business owner). Determines Phase 1 infrastructure timelines."
-    },
-    {
-      "agent": "Nova & Jeremy",
-      "text": "PM AI playbook needs Jeremy's AHA! integration improvements list for Thursday presentation roadmap section."
-    }
+    "Eli waiting on pitch validation from Jeremy before Phase 1 build kickoff",
+    "Remy has a cron bug on workout notes that needs investigation",
+    "Atlas needs scuba cert pricing from Jeremy to finalize Cancun budget"
   ]
 }
