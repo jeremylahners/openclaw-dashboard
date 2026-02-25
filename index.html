@@ -2328,7 +2328,16 @@
 
       // Dedupe by seq — skip if already in cache (but ignore optimistic entries with _optimistic flag)
       const lastReal = cache.filter(m => !m._optimistic).pop();
-      if (lastReal && lastReal.seq >= message.seq) return;
+      if (lastReal && lastReal.seq >= message.seq) {
+        // Out-of-order message detected! Add to cache but trigger full re-render to maintain seq order
+        cache.push(message);
+        if (agent === currentAgentKey) {
+          // Re-sort cache by seq and re-render entire chat
+          cache.sort((a, b) => a.seq - b.seq);
+          renderAllMessages(agent, cache);
+        }
+        return;
+      }
 
       // Check for duplicate by content + isBot within last 10 seconds (prevents echo)
       const recentDuplicate = cache.find(m => 
