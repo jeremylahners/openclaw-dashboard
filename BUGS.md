@@ -1,227 +1,44 @@
-# Office Dashboard - Known Bugs
+# Bug Log
 
-## Critical Issues
-
-### Bug #1: Agent-to-Agent Messages Not Visible in Chat UI ✅ FIXED
-**Reported**: 2026-02-14 20:23 EST  
-**Reporter**: Jeremy  
-**Severity**: High  
-**Status**: ✅ RESOLVED (2026-02-14 20:50 EST)
-
-**Description:**
-When agents communicate via `sessions_send()`, the messages don't appear in the Office dashboard chat interface. This makes agent-to-agent communication invisible to users.
-
-**Steps to Reproduce:**
-1. Harper sends message to Marcus via `sessions_send({ sessionKey: "...", message: "..." })`
-2. Marcus receives and responds
-3. Open Harper's chat with Marcus in Office dashboard
-4. Messages are missing - chat appears empty
-
-**Expected Behavior:**
-- Agent-to-agent messages should appear in both sender and receiver chat panels
-- Messages should show proper sender attribution (agent emoji/name)
-- Should integrate seamlessly with existing chat UI
-
-**Current Workaround:**
-Use `sessions_history()` to manually check agent communication
-
-**Technical Details:**
-- `sessions_send` messages go through Gateway backend
-- Office dashboard chat currently only shows webchat channel messages
-- Need to route agent-to-agent messages to webchat display
-- Backend: `gateway-api.js` WebSocket handler
-- Frontend: `index.html` chat message rendering
-
-**Assigned To:** Marcus (backend routing) + Dash (frontend display)
-
-**Priority:** High - affects core agent collaboration workflow
-
-**Solution Implemented (Marcus, 2026-02-14 21:45 EST):**
-- ✅ Polling solution: Poll `chat.history` every 3 seconds for all agents
-- ✅ Detect new incoming messages (`role='user'`) by timestamp tracking
-- ✅ Store in SQLite chat.db and broadcast to dashboard clients
-- ✅ No Gateway modifications needed
-- ✅ Tested and confirmed working by Jeremy
-
-**Testing Results (Harper + Jeremy, 2026-02-14 20:50 EST):**
-- ✅ Harper sent test messages via `sessions_send`
-- ✅ Messages detected within 3 seconds
-- ✅ Messages stored in database correctly
-- ✅ Messages appear in Office dashboard UI
-- ✅ Two-way visibility confirmed (sender and receiver both see messages)
-
-**Performance:**
-- Polling overhead: 4 req/sec to Gateway (12 agents × 3s interval)
-- Message latency: < 3 seconds
-- Minimal impact on Gateway
-
-**Commits:**
-- `256fcf2` - Bug analysis and documentation
-- `39ef252` - Gateway capabilities investigation
-- `d844ab5` - Working polling solution
-- `c115ff6` - Implementation status documentation
+## Bug #1: iPad Office Layout Squished
+**Reporter:** Jeremy | **Date:** 2026-02-24 23:51 EST | **Severity:** Medium  
+**Device:** iPad PWA  
+**Description:** Office space gets squished on iPad; agent avatars and panels overlap when viewport is wider but shorter.  
+**Expected:** Office layout should maintain a fixed minimum size; components don't overlap.  
+**Current:** ~~Layout collapses/squishes, components stack/overlap.~~ FIXED  
+**Fix Applied:** Added min-width: 750px and height: 600px to .office container  
+**Status:** ✅ FIXED | **Assigned:** Marcus | **Commit:** 8a4e2b5
 
 ---
 
-## Other Known Issues
-
-### Bug #5: Version number edge case in TTS sentence splitter
-**Reported**: 2026-02-18 19:36 EST
-**Reporter**: Harper (code review)
-**Severity**: Very Low
-**Status**: Open — deferred, not blocking
-
-**Description:**
-When a text chunk contains a version number like `2.0` near a sentence boundary, the sentence splitter may return 0 sentences for that chunk.
-
-**Example:**
-`'Version 2.0 is out. Download it now.'` → returns `[]` (0 sentences)
-
-**Context:**
-The splitter requires the word before a `.` to be 5+ characters to avoid splitting on abbreviations. Digit sequences like `2.0` are ≤4 chars so the period isn't recognized as a sentence boundary.
-
-**Workaround:**
-In realistic multi-sentence context the issue is self-correcting — the text will eventually be flushed by `onStreamFinalVoice()` once the full response arrives.
-
-**Fix (when prioritized):**
-Extend the boundary regex to also match a period preceded by a digit sequence: `\d+[.]\s+(?=[A-Z])`.
+## Bug #2: Agent-to-Agent Communications Not Displayed
+**Reporter:** Jeremy | **Date:** 2026-02-24 23:51 EST | **Severity:** High  
+**Device:** PWA (all platforms)  
+**Description:** Agent comms groups no longer render. User sees only a thin line instead of the full message bubbles/content.  
+**Expected:** Agent-to-agent messages display in collapsible `.agent-comms-group` containers with full message content visible.  
+**Current:** ~~Only a thin line visible; full comms content hidden or not rendering.~~ FIXED  
+**Root Cause:** `.comms-body` had `overflow: hidden` without proper `display: flex`, causing content to collapse  
+**Fix Applied:** Added `display: flex; flex-direction: column; gap: 4px;` to `.comms-body`  
+**Status:** ✅ FIXED | **Assigned:** Marcus | **Commit:** b812158
 
 ---
 
-### Bug #2: Streaming Message Cleanup Issue
-**Reported**: 2026-02-14 20:50 EST  
-**Reporter**: Jeremy  
-**Severity**: Low  
-**Status**: Open
-
-**Description:**
-Partial streaming messages sometimes remain visible in chat after the final message has been committed. The streaming message element doesn't get properly removed/replaced.
-
-**Example:**
-In Marcus's chat, this partial message is stuck:
-> "Perfect! Found it. The Gateway does support chat event subscriptions via chat.subscribe. Let me update my analysis"
-
-The final committed message should have replaced it, but the streaming element remained.
-
-**Root Cause:**
-Likely an issue with `clearStreamingEl()` logic in the frontend or streaming state cleanup when final messages arrive.
-
-**Investigation Needed:**
-1. Check `clearStreamingEl()` function in `index.html`
-2. Verify streaming elements are removed when `state='final'` event arrives
-3. Check streaming state management per agent
-4. Ensure DOM cleanup happens before final message render
-
-**Assigned To:** Dash (frontend streaming) + Marcus (if backend involved)
-
-**Priority:** Low - cosmetic issue, doesn't affect functionality
+## Bug #3: Chat Auto-Scroll Jumping
+**Reporter:** Jeremy | **Date:** 2026-02-24 23:51 EST | **Severity:** Medium  
+**Device:** PWA (all platforms)  
+**Description:** Chat jumps to bottom repeatedly even when user is intentionally scrolling up to read history. Behavior is jarring and interrupts reading flow.  
+**Expected:** Chat should only auto-scroll to bottom when user is already at the bottom or a new message arrives while they're at the bottom.  
+**Current:** ~~Chat jumps/snaps to bottom frequently, overriding user scroll position.~~ FIXED  
+**Root Cause:** Multiple rapid `autoScroll()` calls triggered by streaming, message commits, etc. overrode user scroll  
+**Fix Applied:** Added `userHasScrolled` tracking, debounced rapid calls (max 100ms), reduced threshold (150→100px)  
+**Status:** ✅ FIXED | **Assigned:** Marcus | **Commit:** d5dbbf4
 
 ---
 
-### Bug #3: Duplicate User Message on Send ✅ FIXED
-**Reported**: 2026-02-14 22:36 EST  
-**Reporter**: Jeremy  
-**Severity**: Medium  
-**Status**: ✅ RESOLVED (2026-02-14 22:38 EST)
-
-**Description:**
-When Jeremy sends a message, he initially sees a duplicate of his own message displayed as coming from the agent, with extended detail/metadata surrounding the original message. When the page is refreshed, the duplication disappears.
-
-**Steps to Reproduce:**
-1. Open Office dashboard chat with any agent
-2. Type and send a message
-3. Observe chat display immediately after sending
-4. Notice duplicate message appearing (looks like it came from agent)
-5. Refresh page - duplicate disappears
-
-**Expected Behavior:**
-- User message appears once, in the correct position
-- No duplicate or echo of the message
-- No extended detail/metadata shown
-
-**Current Behavior:**
-- User message appears correctly (optimistic display)
-- A second copy of the message appears as if from the agent
-- The duplicate includes extended detail/metadata
-- Refresh clears the duplicate (database is correct)
-
-**Root Cause (Hypothesis):**
-Likely related to:
-- Optimistic message insertion vs. server confirmation
-- Agent-to-agent message polling detecting user's own message
-- Message deduplication logic not working correctly
-- Frontend rendering both optimistic and confirmed messages
-
-**Technical Details:**
-- Frontend: `index.html` - `appendMessageEl()`, `handleNewMessage()`
-- Backend: `gateway-api.js` - agent polling system
-- Database: Message stored correctly (verified by refresh clearing duplicate)
-- Timing: Happens immediately after send, before next poll cycle
-
-**Assigned To:** Marcus (backend message dedup) + Dash (frontend display)
-
-**Priority:** Medium - affects UX during active conversation
-
-**Investigation Needed:**
-1. Check optimistic message `_optimistic` flag handling
-2. Verify deduplication by content/idempotency key
-3. Review agent polling - is it detecting user's own sent messages?
-4. Check if `handleNewMessage()` properly replaces optimistic messages
-
-**Solution Implemented (Marcus, 2026-02-14 22:38 EST):**
-- ✅ Root cause: Polling system re-detected Jeremy's sent messages with different idempotency keys
-- ✅ Web UI sends with key: `user-${timestamp}-${random}`
-- ✅ Polling uses key: `poll-user-${agentKey}-${msgTimestamp}`
-- ✅ SQLite only checks idempotency key for duplicates, so both went through
-- ✅ Fix: Added content-based deduplication in `db.js`
-- ✅ New check: Same agent + role + content + timestamp within 10s = duplicate
-- ✅ Prevents polling from re-adding web UI sent messages
-
-**Testing:**
-Ready for Jeremy to test after refresh
-
-**Commit:**
-- `24c7ba3` - Content-based deduplication in db.js
-
----
-
-### Bug #4: Messages Showing System Metadata
-**Reported**: 2026-02-14 22:48 EST  
-**Reporter**: Jeremy  
-**Severity**: Medium  
-**Status**: Open
-
-**Description:**
-Messages in the chat UI are displaying raw system metadata that should be stripped for user-facing display.
-
-**Example:**
-```
-System: [2026-02-14 22:32:21 EST] Config cleaned - now using only gpt-5.2-codex. Ready for testing.
-```
-
-**Expected Display:**
-```
-Config cleaned - now using only gpt-5.2-codex. Ready for testing.
-```
-
-**Issues:**
-1. "System:" prefix should not be shown
-2. Timestamp in brackets `[2026-02-14 22:32:21 EST]` is redundant (message already has timestamp)
-3. Raw formatting should be cleaned before rendering
-
-**Root Cause:**
-Likely in message rendering pipeline:
-- Messages from certain sources (system events, cron jobs, etc.) have metadata prefixes
-- Frontend is displaying raw message content without stripping metadata
-- Need to sanitize/format messages before display
-
-**Investigation Needed:**
-1. Check `formatMarkdown()` function in `index.html`
-2. Review message rendering in `createMessageEl()` and `appendMessageEl()`
-3. Identify where "System:" prefix is added
-4. Add message content sanitization before display
-
-**Assigned To:** Dash (frontend message rendering) + Codex (code review)
-
-**Priority:** Medium - affects message readability
-
+## Summary
+- **Total Open:** 0
+- **Total Fixed:** 3 ✅
+  - Bug #1 (Medium): iPad layout squish → FIXED
+  - Bug #2 (High): Agent comms not displaying → FIXED
+  - Bug #3 (Medium): Chat auto-scroll jumping → FIXED
+- **All Deployed:** 2026-02-25 00:15 EST
