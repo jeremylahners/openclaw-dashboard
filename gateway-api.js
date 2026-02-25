@@ -67,7 +67,7 @@ const messageStore = {
     // Track recent messages per agent (keep last 100)
     if (!this._recentMessages.has(agent)) this._recentMessages.set(agent, []);
     const agentMsgs = this._recentMessages.get(agent);
-    agentMsgs.push({ content, timestamp, role, seq });
+    agentMsgs.push({ content, timestamp, role, seq, metadata });
     if (agentMsgs.length > 100) agentMsgs.splice(0, agentMsgs.length - 100);
 
     return { seq, duplicate: false };
@@ -2074,7 +2074,14 @@ const server = http.createServer(async (req, res) => {
         .filter(m => (m.role === 'user' || m.role === 'assistant'))
         .map(m => {
           const content = extractMessageText(m);
-          return { agent: agentKey, role: m.role, content, timestamp: m.timestamp || Date.now(), metadata: null };
+          // Try to retrieve metadata from in-memory messageStore if available
+          let metadata = null;
+          const agentMsgs = messageStore._recentMessages.get(agentKey) || [];
+          const storedMsg = agentMsgs.find(sm => sm.content === content && sm.role === m.role);
+          if (storedMsg && storedMsg.metadata) {
+            metadata = storedMsg.metadata;
+          }
+          return { agent: agentKey, role: m.role, content, timestamp: m.timestamp || Date.now(), metadata };
         })
         .filter(row => row.content && !isSystemContextMessage(row.content) && !NOISE_REPLIES.test(row.content.trim()))
         .map((row, idx) => formatMessageForClient({ ...row, seq: idx + 1 }));
