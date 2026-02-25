@@ -2669,14 +2669,36 @@
       }
     }
 
-    function autoScroll(force = false) {
-      const threshold = 150;
+    // Track user scroll position to respect manual scrolling
+    let userHasScrolled = false;
+    let autoScrollTimeout = null;
+    
+    chatMessages.addEventListener('scroll', () => {
+      // User manually scrolled — mark it
       const distFromBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight;
-      if (force || distFromBottom < threshold) {
-        requestAnimationFrame(() => {
-          chatMessages.scrollTop = chatMessages.scrollHeight;
-        });
-      }
+      userHasScrolled = distFromBottom > 250; // User is intentionally scrolled up if >250px from bottom
+    }, { passive: true });
+
+    function autoScroll(force = false) {
+      const threshold = 100; // Reduced from 150 to be less aggressive
+      const distFromBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight;
+      
+      // Never auto-scroll if user has manually scrolled up (except on force)
+      if (!force && userHasScrolled) return;
+      
+      // Only scroll if we're already near bottom or force is true
+      if (!force && distFromBottom > threshold) return;
+      
+      // Debounce rapid scroll calls — max once per 100ms
+      if (autoScrollTimeout) return;
+      
+      autoScrollTimeout = setTimeout(() => { autoScrollTimeout = null; }, 100);
+      
+      requestAnimationFrame(() => {
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+        // Reset the user scroll flag after auto-scroll
+        userHasScrolled = false;
+      });
     }
 
     // Chart ID counter for unique chart containers
