@@ -1026,6 +1026,21 @@
       box-sizing: border-box;
     }
 
+    #scrollToBottom {
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    }
+
+    #scrollToBottom:hover {
+      background: rgba(88, 101, 242, 1) !important;
+      box-shadow: 0 4px 12px rgba(88, 101, 242, 0.4);
+    }
+
+    #scrollToBottom:active {
+      transform: translateX(-50%) scale(0.95);
+    }
+
     .message-bubble {
       display: flex;
       gap: 8px;
