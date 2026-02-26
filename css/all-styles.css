@@ -812,6 +812,25 @@
       overflow: hidden;
     }
 
+    /* iPad: completely remove side-panel from layout flow */
+    @media (max-width: 1200px) {
+      .side-panel {
+        position: absolute !important;
+        right: -9999px !important;
+        display: none !important;
+      }
+      
+      .side-panel.hidden {
+        display: none !important;
+      }
+      
+      .side-panel.expanded {
+        position: fixed !important;
+        right: 0 !important;
+        display: flex !important;
+      }
+    }
+
     .resize-handle {
       position: absolute;
       left: 0;
