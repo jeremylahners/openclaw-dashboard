@@ -854,6 +854,12 @@
         flex-direction: column !important;
       }
       
+      /* Chat wrapper (position: relative; flex: 1 parent) must be flex */
+      .side-panel #tab-chat > div[style*="position: relative"] {
+        display: flex !important;
+        flex-direction: column !important;
+      }
+
       .side-panel .chat-messages {
         flex: 1 !important;
         overflow-y: auto !important;
