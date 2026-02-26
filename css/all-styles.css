@@ -837,11 +837,15 @@
       }
 
       .side-panel .tab-pane {
-        display: flex !important;
+        display: none !important;
         flex-direction: column !important;
         flex: 1 !important;
         overflow: hidden !important;
         min-height: 0 !important;
+      }
+
+      .side-panel .tab-pane.active {
+        display: flex !important;
       }
 
       /* Chat tab: special layout for messages + input */
