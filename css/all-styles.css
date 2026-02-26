@@ -100,23 +100,72 @@
     /* iPad portrait (max-width: 768px) */
     @media (max-width: 768px) {
       .office {
-        max-width: 90vw;
-        padding: 15px;
-        /* Prevent squishing: set height based on tallest content stack
-           desks(150) + conference(80) + 10px+10px spacing + 30px padding = 270px
-           Right side with adventure(70) + padding = 200px
-           Bottom (isla-desk): 50px at bottom
-           Total safe height: 360px */
+        max-width: 95vw;
+        margin-left: auto;
+        margin-right: auto;
+        padding: 20px;
         height: auto;
-        min-height: 360px;
+        /* Stack layout vertically on iPad: desks + conference + kitchen/finance + adventure + isla
+           Each row ~80-100px + spacing. Total: 5-6 rows * 100px + padding = ~550px minimum */
+        min-height: 550px;
       }
 
-      .desks { top: 10px; left: 10px; width: 300px; height: 150px; }
-      .conference { top: 170px; left: 10px; width: 300px; height: 80px; }
-      .kitchen { top: 10px; right: 10px; width: 150px; height: 120px; }
-      .finance-corner { top: 145px; right: 10px; width: 150px; height: 70px; }
-      .adventure-corner { bottom: 60px; right: 10px; width: 150px; height: 70px; }
-      .isla-desk { bottom: 10px; width: 120px; height: 50px; }
+      /* iPad layout: left column takes full width, right column below */
+      .desks { 
+        position: relative;
+        top: auto;
+        left: auto;
+        right: auto;
+        bottom: auto;
+        width: 100%;
+        height: 120px;
+        margin-bottom: 15px;
+      }
+      
+      .conference { 
+        position: relative;
+        top: auto;
+        left: auto;
+        right: auto;
+        bottom: auto;
+        width: 100%;
+        height: 80px;
+        margin-bottom: 15px;
+      }
+      
+      .kitchen { 
+        position: absolute;
+        top: 250px;
+        right: 20px;
+        width: 140px;
+        height: 100px;
+      }
+      
+      .finance-corner { 
+        position: absolute;
+        top: 360px;
+        right: 20px;
+        width: 140px;
+        height: 70px;
+      }
+      
+      .adventure-corner { 
+        position: absolute;
+        bottom: 80px;
+        right: 20px;
+        width: 140px;
+        height: 70px;
+      }
+      
+      .isla-desk { 
+        position: relative;
+        bottom: auto;
+        left: auto;
+        transform: none;
+        width: 100%;
+        height: 50px;
+        margin-top: 20px;
+      }
     }
 
     .zone {
