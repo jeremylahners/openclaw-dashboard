@@ -2679,41 +2679,38 @@
     }
 
     // Track user scroll position to respect manual scrolling
-    let userIsReadingHistory = false;
+    let userScrolledAway = false;  // true if user manually scrolled away from bottom
     let lastAutoScrollTime = 0;
-    let lastUserScrollTime = 0;
     
-    chatMessages.addEventListener('scroll', () => {
-      lastUserScrollTime = Date.now();
+    chatMessages.addEventListener('scroll', (e) => {
       const distFromBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight;
-      // If user scrolls more than 200px from bottom, they're intentionally reading history
-      userIsReadingHistory = distFromBottom > 200;
+      // If user scrolled away from bottom (>100px), mark it
+      if (distFromBottom > 100) {
+        userScrolledAway = true;
+      } else {
+        // User scrolled back to bottom - clear the flag
+        userScrolledAway = false;
+      }
     }, { passive: true });
 
     function autoScroll(force = false) {
-      const threshold = 50; // Only auto-scroll if user is very close to bottom
+      // If user manually scrolled away from bottom, don't auto-scroll (unless force=true)
+      if (!force && userScrolledAway) return;
+      
       const distFromBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight;
+      
+      // If user is already at bottom, no need to scroll
+      if (distFromBottom <= 5) return;
+      
+      // Debounce: don't scroll more than once per 500ms to avoid spamming
       const now = Date.now();
-      
-      // If user recently scrolled up (within last 2 seconds) to read history, don't auto-scroll
-      if (!force && userIsReadingHistory && (now - lastUserScrollTime) < 2000) return;
-      
-      // Only scroll if we're near bottom or force is true
-      if (!force && distFromBottom > threshold) return;
-      
-      // Debounce: don't scroll more than once per 300ms
-      if (now - lastAutoScrollTime < 300) return;
+      if (now - lastAutoScrollTime < 500) return;
       lastAutoScrollTime = now;
       
-      // Use setTimeout with 0 delay to ensure scroll happens after current render cycle completes
-      // This prevents scrollHeight from being stale when DOM is still being laid out
-      setTimeout(() => {
-        requestAnimationFrame(() => {
-          chatMessages.scrollTop = chatMessages.scrollHeight;
-          // When we auto-scroll to bottom, user is no longer reading history
-          userIsReadingHistory = false;
-        });
-      }, 0);
+      // Perform the scroll
+      requestAnimationFrame(() => {
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+      });
     }
 
     // Chart ID counter for unique chart containers
