@@ -812,22 +812,27 @@
       overflow: hidden;
     }
 
-    /* iPad: completely remove side-panel from layout flow */
+    /* iPad: side-panel should overlay, not take up layout space */
     @media (max-width: 1200px) {
       .side-panel {
-        position: absolute !important;
-        right: -9999px !important;
-        display: none !important;
+        position: fixed !important;
+        right: 0;
+        top: 0;
+        width: 400px;
+        min-width: 300px;
+        height: 100vh;
+        z-index: 1001;
       }
       
       .side-panel.hidden {
-        display: none !important;
+        transform: translateX(100%);
+        width: 400px;
+        min-width: 300px;
       }
       
       .side-panel.expanded {
-        position: fixed !important;
-        right: 0 !important;
-        display: flex !important;
+        transform: translateX(0);
+        width: 400px;
       }
     }
 
