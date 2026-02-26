@@ -2679,28 +2679,30 @@
     }
 
     // Track user scroll position to respect manual scrolling
-    let userManuallyScrolled = false;
+    let userIsReadingHistory = false;
     let lastAutoScrollTime = 0;
+    let lastUserScrollTime = 0;
     
     chatMessages.addEventListener('scroll', () => {
+      lastUserScrollTime = Date.now();
       const distFromBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight;
-      // If user scrolls more than 300px from bottom, they're intentionally reading history
-      userManuallyScrolled = distFromBottom > 300;
+      // If user scrolls more than 200px from bottom, they're intentionally reading history
+      userIsReadingHistory = distFromBottom > 200;
     }, { passive: true });
 
     function autoScroll(force = false) {
-      const threshold = 100; // Reduced from 150 to be less aggressive
+      const threshold = 50; // Only auto-scroll if user is very close to bottom
       const distFromBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight;
+      const now = Date.now();
       
-      // If user has manually scrolled up, don't auto-scroll (unless force=true)
-      if (!force && userManuallyScrolled) return;
+      // If user recently scrolled up (within last 2 seconds) to read history, don't auto-scroll
+      if (!force && userIsReadingHistory && (now - lastUserScrollTime) < 2000) return;
       
       // Only scroll if we're near bottom or force is true
       if (!force && distFromBottom > threshold) return;
       
-      // Debounce: don't scroll more than once per 200ms
-      const now = Date.now();
-      if (now - lastAutoScrollTime < 200) return;
+      // Debounce: don't scroll more than once per 300ms
+      if (now - lastAutoScrollTime < 300) return;
       lastAutoScrollTime = now;
       
       // Use setTimeout with 0 delay to ensure scroll happens after current render cycle completes
@@ -2708,8 +2710,8 @@
       setTimeout(() => {
         requestAnimationFrame(() => {
           chatMessages.scrollTop = chatMessages.scrollHeight;
-          // Reset manual scroll flag after successful auto-scroll (user is now at bottom)
-          userManuallyScrolled = false;
+          // When we auto-scroll to bottom, user is no longer reading history
+          userIsReadingHistory = false;
         });
       }, 0);
     }
