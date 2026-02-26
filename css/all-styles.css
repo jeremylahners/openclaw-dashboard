@@ -61,6 +61,13 @@
       overflow: auto;
     }
 
+    /* iPad: remove left padding since left panel is off-screen */
+    @media (max-width: 1200px) {
+      .office-container {
+        padding-left: 20px !important;
+      }
+    }
+
     h1 {
       text-align: center;
       margin-bottom: 20px;
