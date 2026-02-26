@@ -90,6 +90,7 @@
         height: auto;
         display: grid;
         grid-template-columns: 1fr 1fr;
+        grid-auto-rows: max-content;
         grid-gap: 15px;
         position: relative;
         background: #0f0f1a;
@@ -97,7 +98,7 @@
         border: 1px solid #333;
       }
 
-      /* Grid layout for iPad landscape: 2 columns */
+      /* Grid layout for iPad landscape: 2 columns, desks/conference on left, kitchen/finance/adventure on right */
       .desks { 
         position: static !important;
         top: auto !important;
@@ -108,7 +109,6 @@
         height: 140px !important;
         margin: 0 !important;
         grid-column: 1;
-        grid-row: 1;
       }
       
       .conference { 
@@ -121,7 +121,6 @@
         height: 120px !important;
         margin: 0 !important;
         grid-column: 1;
-        grid-row: 2;
       }
       
       .kitchen { 
@@ -166,7 +165,6 @@
         height: 70px !important;
         margin: 0 !important;
         grid-column: 1 / -1;
-        grid-row: 3;
       }
     }
 
