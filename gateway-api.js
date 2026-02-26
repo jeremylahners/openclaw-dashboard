@@ -2826,7 +2826,14 @@ wss.on('connection', (ws) => {
             .filter(m => (m.role === 'user' || m.role === 'assistant'))
             .map(m => {
               const content = extractMessageText(m);
-              return { agent: msg.agent, role: m.role, content, timestamp: m.timestamp || Date.now(), metadata: null };
+              // Try to retrieve metadata from in-memory messageStore if available
+              let metadata = null;
+              const agentMsgs = messageStore._recentMessages.get(msg.agent) || [];
+              const storedMsg = agentMsgs.find(sm => sm.content === content && sm.role === m.role);
+              if (storedMsg && storedMsg.metadata) {
+                metadata = storedMsg.metadata;
+              }
+              return { agent: msg.agent, role: m.role, content, timestamp: m.timestamp || Date.now(), metadata };
             })
             .filter(row => row.content && !isSystemContextMessage(row.content) && !NOISE_REPLIES.test(row.content.trim()))
             .map((row, idx) => formatMessageForClient({ ...row, seq: idx + 1 }));
@@ -2891,7 +2898,14 @@ wss.on('connection', (ws) => {
               .filter(m => (m.role === 'user' || m.role === 'assistant'))
               .map(m => {
                 const content = extractMessageText(m);
-                return { agent, role: m.role, content, timestamp: m.timestamp || Date.now(), metadata: null };
+                // Try to retrieve metadata from in-memory messageStore if available
+                let metadata = null;
+                const agentMsgs = messageStore._recentMessages.get(agent) || [];
+                const storedMsg = agentMsgs.find(sm => sm.content === content && sm.role === m.role);
+                if (storedMsg && storedMsg.metadata) {
+                  metadata = storedMsg.metadata;
+                }
+                return { agent, role: m.role, content, timestamp: m.timestamp || Date.now(), metadata };
               })
               .filter(row => row.content && !isSystemContextMessage(row.content) && !NOISE_REPLIES.test(row.content.trim()))
               .map((row, idx) => formatMessageForClient({ ...row, seq: idx + 1 }));

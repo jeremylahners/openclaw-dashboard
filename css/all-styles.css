@@ -102,7 +102,13 @@
       .office {
         max-width: 90vw;
         padding: 15px;
-        min-height: 500px;
+        /* Prevent squishing: set height based on tallest content stack
+           desks(150) + conference(80) + 10px+10px spacing + 30px padding = 270px
+           Right side with adventure(70) + padding = 200px
+           Bottom (isla-desk): 50px at bottom
+           Total safe height: 360px */
+        height: auto;
+        min-height: 360px;
       }
 
       .desks { top: 10px; left: 10px; width: 300px; height: 150px; }

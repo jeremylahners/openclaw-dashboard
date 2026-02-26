@@ -1,60 +1,95 @@
 {
-  "date": "2026-02-24",
-  "time": "15:00:00",
-  "timezone": "America/New_York",
+  "date": "2026-02-25",
+  "time": "15:00",
   "updates": [
     {
+      "agent": "harper",
+      "name": "Harper",
+      "role": "QA Manager",
+      "working_on": [
+        "QA for three bugs Jeremy reported yesterday",
+        "Root-cause analysis completed on all bugs",
+        "Bug #1 (iPad Squish): Fixed height CSS needs responsive design",
+        "Bug #2 (Agent Comms): Waiting on Jeremy's DevTools DOM inspection",
+        "Bug #3 (Chat Jump): Found updateStreaming() fires autoScroll() repeatedly — debounce issue"
+      ],
+      "blockers": [
+        "Bug #2 investigation pending Jeremy's DOM inspection",
+        "Can't QA fixes until Marcus ships them"
+      ],
+      "learned": "BUGS.md file had fabricated commit hashes — verified fixes against actual git history matters. Scroll logic is classic debounce + state-reset problem."
+    },
+    {
       "agent": "eli",
-      "name": "Eli (Chief Architect)",
-      "working_on": "Waiting on validation feedback from pitch conversations. Preparing Phase 1 scaffolding: Docker Compose templates, bootstrap scripts, Pipecat initialization configs.",
-      "blockers": "None — Jeremy has pitches and needs time for prospect conversations.",
-      "learned": "Core value prop is reliability, not AI. Real estate agents consistently want a system that never misses calls during their working hours. Simplifying pitch narrative accordingly."
+      "name": "Eli",
+      "role": "Chief Architect",
+      "working_on": [
+        "Holding pattern waiting for Jeremy's validation feedback from pitch conversations",
+        "Prepared scaffolding templates and architectural diagrams for Phase 1"
+      ],
+      "blockers": [
+        "Waiting on Jeremy's validation from customer conversations"
+      ],
+      "learned": "Voice pipeline (Pipecat → faster-whisper → Claude → ElevenLabs → Twilio) is the critical path bottleneck. Prioritize first test call over perfect infrastructure."
     },
     {
       "agent": "sage",
-      "name": "Sage (Researcher)",
-      "working_on": "No active research tasks",
-      "blockers": "None",
-      "learned": "Nothing new to report"
+      "name": "Sage",
+      "role": "Researcher",
+      "working_on": [],
+      "blockers": [],
+      "learned": "No active research tasks — available for assignments"
     },
     {
       "agent": "julie",
-      "name": "Julie (Marketing)",
-      "working_on": "Waiting for feedback on Office Dashboard posts from last week",
-      "blockers": "None",
-      "learned": "Nothing new since Monday"
-    },
-    {
-      "agent": "remy",
-      "name": "Remy (Chef)",
-      "working_on": "Monitoring dinner plan sync (Apple Reminders ↔ dashboard), standing by for recipe requests and meal prep coordination",
-      "blockers": "None",
-      "learned": "7am workout note bug from Sunday (showing dinner instead of workout) — root cause on cron job still pending. Jeremy values precision over speed in cooking."
-    },
-    {
-      "agent": "val",
-      "name": "Val (Finance)",
-      "working_on": "No active projects. Available for MHC work, Office dashboard, financial tracking, meal planning.",
-      "blockers": "None",
-      "learned": "Bonus should be in — worth checking. MHC caregiver feature ready pending backend review."
+      "name": "Julie",
+      "role": "Marketing",
+      "working_on": [
+        "Standby — waiting for feedback on Office Dashboard posts"
+      ],
+      "blockers": [],
+      "learned": "Quiet week, ready when Jeremy has something"
     },
     {
       "agent": "atlas",
-      "name": "Atlas (Travel)",
-      "working_on": "Standing by for scuba certification pricing confirmation for Cancun trip budget finalization",
-      "blockers": "Waiting for scuba cert quote from Jeremy",
-      "learned": "Budget airline bag fees: $50–60/bag for international. American Airlines Mexico fees now $45/segment as of Feb 18. Driving time to airport dramatically affects value."
+      "name": "Atlas",
+      "role": "Travel",
+      "working_on": [
+        "Waiting on Jeremy's scuba certification pricing confirmation to finalize Cancun budget",
+        "Trip planning from Saturday complete and documented"
+      ],
+      "blockers": [
+        "Pending scuba cert quote from Jeremy"
+      ],
+      "learned": "Continuing to apply insights about budget airline fees and airport logistics from Cancun research"
+    },
+    {
+      "agent": "nova",
+      "name": "Nova",
+      "role": "HR",
+      "working_on": [
+        "Major system repair: Fixed critical failures in Lena's workout cron and Remy's recipe cron",
+        "Rebuilt both jobs from first principles with clear procedures",
+        "Created new completion protocol — state updates only when Jeremy reports completion",
+        "Documented lunges/calf raises addition to workout plan"
+      ],
+      "blockers": [
+        "Both Lena and Remy must rebuild/deploy cron jobs by 7am tomorrow",
+        "Need confirmation they've tested new logic before deployment"
+      ],
+      "learned": "Cron jobs fail loudly but look like success. Auto-marking completion breaks next day's plan. Documentation is the contract. Exercise programming decisions need transparency."
     }
   ],
-  "no_response": [
-    "Marcus (Dev Manager) — timeout",
-    "Harper (QA Manager) — timeout",
-    "Lena (Gym Coach) — timeout",
-    "Nova (HR) — timeout"
-  ],
   "crossTeam": [
-    "Eli waiting on pitch validation from Jeremy before Phase 1 build kickoff",
-    "Remy has a cron bug on workout notes that needs investigation",
-    "Atlas needs scuba cert pricing from Jeremy to finalize Cancun budget"
+    "Dev & QA: Bugs #1–#3 in progress, Marcus blocked until DevTools feedback on #2 (Harper waiting on Jeremy)",
+    "Architecture: Phase 1 voice pipeline critical path identified, awaiting Jeremy's validation from customer conversations",
+    "Ops: Cron job repairs (Lena/Remy) need 7am deployment tomorrow with full testing",
+    "Support: Multiple agents on standby — Sage, Julie ready for assignments; Atlas waiting on scuba pricing"
+  ],
+  "noResponse": [
+    "Marcus (Dev Manager) — timeout",
+    "Remy (Chef) — timeout",
+    "Lena (Gym Coach) — timeout",
+    "Val (Finance) — timeout"
   ]
 }

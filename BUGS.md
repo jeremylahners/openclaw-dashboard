@@ -48,9 +48,33 @@
 
 ---
 
+## Bug #4: Chat Messages Displayed Out of Order
+**Reporter:** Jeremy | **Date:** 2026-02-25 15:20 EST | **Severity:** Critical 🚨  
+**Device:** PWA & Desktop  
+**Description:** Messages display out of order, especially during streaming. E.g., prompt shows correctly, response streams, then final response appears *before* the prompt. Hard refresh fixes it temporarily.
+**Expected:** Messages always display in sequence order (oldest → newest).  
+**Current:** Messages appear out of order; order changes between render cycles.
+**Root Cause:** Race condition between `message_committed` (appends new message) and `sync_update`/`history_update` (full re-render from cache). 
+  - `appendOrGroupMessage()` blindly appends without checking if message is in correct order
+  - `message_committed` fires with one message; `sync_update` fires immediately after with full history
+  - If sync arrives before append completes, or if append puts message in wrong DOM position, re-render shows out-of-order
+  - Cache is sorted by `seq` but DOM might not match cache order if append bypasses sort
+**Code Location:** 
+  - `/office/index.html` line 2322-2365 (handleNewMessage → appendOrGroupMessage)
+  - `/office/index.html` line 2646-2671 (appendOrGroupMessage)
+  - `/office/index.html` line 2285-2310 (handleHistoryUpdate → renderAllMessages)
+**Fix Approach:**
+  - Option A: Before appending, check if message.seq > lastMessage.seq. If not, trigger full renderAllMessages instead
+  - Option B: Always use full renderAllMessages for any cache update (safer but slower)
+  - Option C: Use a message queue with ordered insertion (find correct position before appending)
+**Status:** 🔴 Open | **Assigned:** Marcus | **Blocking:** YES — affects all agent conversations
+
+---
+
 ## Summary
-- **Total Open:** 3
-- **High Severity:** 1 (Bug #2)
+- **Total Open:** 4
+- **Critical Severity:** 1 (Bug #4 — Out of order, affects all users)
+- **High Severity:** 1 (Bug #2 — Comms not displaying)
 - **Medium Severity:** 2 (Bugs #1, #3)
-- **Blocking:** Bug #2 (agent comms) needs investigation before fix can proceed
-- **Last Updated:** 2026-02-24 23:56 EST
+- **Blocking:** Bugs #2 & #4
+- **Last Updated:** 2026-02-25 15:25 EST
