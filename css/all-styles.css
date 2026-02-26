@@ -105,66 +105,75 @@
         margin-right: auto;
         padding: 20px;
         height: auto;
-        /* Stack layout vertically on iPad: desks + conference + kitchen/finance + adventure + isla
-           Each row ~80-100px + spacing. Total: 5-6 rows * 100px + padding = ~550px minimum */
-        min-height: 550px;
+        display: flex;
+        flex-direction: column;
+        position: relative;
       }
 
-      /* iPad layout: left column takes full width, right column below */
+      /* All zones: flow normally (relative) on iPad, stack vertically */
       .desks { 
-        position: relative !important;
+        position: static !important;
         top: auto !important;
         left: auto !important;
         right: auto !important;
         bottom: auto !important;
         width: 100% !important;
         height: 120px !important;
-        margin-bottom: 15px !important;
+        margin: 0 0 15px 0 !important;
+        flex: none;
       }
       
       .conference { 
-        position: relative !important;
+        position: static !important;
         top: auto !important;
         left: auto !important;
         right: auto !important;
         bottom: auto !important;
         width: 100% !important;
         height: 80px !important;
-        margin-bottom: 15px !important;
+        margin: 0 0 15px 0 !important;
+        flex: none;
       }
       
       .kitchen { 
-        position: absolute !important;
-        top: 250px !important;
-        right: 20px !important;
-        width: 140px !important;
+        position: static !important;
+        top: auto !important;
+        right: auto !important;
+        width: 100% !important;
         height: 100px !important;
+        margin: 0 0 15px 0 !important;
+        flex: none;
       }
       
       .finance-corner { 
-        position: absolute !important;
-        top: 360px !important;
-        right: 20px !important;
-        width: 140px !important;
+        position: static !important;
+        top: auto !important;
+        right: auto !important;
+        width: 100% !important;
         height: 70px !important;
+        margin: 0 0 15px 0 !important;
+        flex: none;
       }
       
       .adventure-corner { 
-        position: absolute !important;
-        bottom: 80px !important;
-        right: 20px !important;
-        width: 140px !important;
+        position: static !important;
+        bottom: auto !important;
+        right: auto !important;
+        width: 100% !important;
         height: 70px !important;
+        margin: 0 0 15px 0 !important;
+        flex: none;
       }
       
       .isla-desk { 
-        position: relative !important;
+        position: static !important;
         bottom: auto !important;
         left: auto !important;
         transform: none !important;
         width: 100% !important;
         height: 50px !important;
-        margin-top: 20px !important;
+        margin: 15px 0 0 0 !important;
+        flex: none;
       }
     }
 

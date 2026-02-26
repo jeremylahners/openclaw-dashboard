@@ -2081,6 +2081,13 @@ const server = http.createServer(async (req, res) => {
           if (storedMsg && storedMsg.metadata) {
             metadata = storedMsg.metadata;
           }
+          
+          // If metadata still null and this is a user message (isUser=true in gateway),
+          // it might be an agent-to-agent message. Mark it.
+          if (!metadata && m.role === 'user') {
+            metadata = { source: 'agent' };
+          }
+          
           return { agent: agentKey, role: m.role, content, timestamp: m.timestamp || Date.now(), metadata };
         })
         .filter(row => row.content && !isSystemContextMessage(row.content) && !NOISE_REPLIES.test(row.content.trim()))
@@ -2833,6 +2840,12 @@ wss.on('connection', (ws) => {
               if (storedMsg && storedMsg.metadata) {
                 metadata = storedMsg.metadata;
               }
+              
+              // If metadata still null and this is a user message, mark as agent-to-agent
+              if (!metadata && m.role === 'user') {
+                metadata = { source: 'agent' };
+              }
+              
               return { agent: msg.agent, role: m.role, content, timestamp: m.timestamp || Date.now(), metadata };
             })
             .filter(row => row.content && !isSystemContextMessage(row.content) && !NOISE_REPLIES.test(row.content.trim()))
@@ -2905,6 +2918,12 @@ wss.on('connection', (ws) => {
                 if (storedMsg && storedMsg.metadata) {
                   metadata = storedMsg.metadata;
                 }
+                
+                // If metadata still null and this is a user message, mark as agent-to-agent
+                if (!metadata && m.role === 'user') {
+                  metadata = { source: 'agent' };
+                }
+                
                 return { agent, role: m.role, content, timestamp: m.timestamp || Date.now(), metadata };
               })
               .filter(row => row.content && !isSystemContextMessage(row.content) && !NOISE_REPLIES.test(row.content.trim()))
