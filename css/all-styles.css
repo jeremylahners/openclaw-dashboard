@@ -826,6 +826,29 @@
         display: flex !important;
         flex-direction: column !important;
       }
+
+      /* Tab content must be flex container for children to size properly */
+      .side-panel .tab-content {
+        display: flex !important;
+        flex-direction: column !important;
+        flex: 1 !important;
+        overflow: hidden !important;
+        min-height: 0 !important;
+      }
+
+      .side-panel .tab-pane {
+        display: flex !important;
+        flex-direction: column !important;
+        flex: 1 !important;
+        overflow: hidden !important;
+        min-height: 0 !important;
+      }
+
+      /* Chat tab: special layout for messages + input */
+      .side-panel #tab-chat {
+        display: flex !important;
+        flex-direction: column !important;
+      }
       
       .side-panel .chat-messages {
         flex: 1 !important;
