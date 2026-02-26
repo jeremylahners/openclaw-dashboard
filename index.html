@@ -2323,6 +2323,17 @@
       // Filter system context messages before they enter the cache
       if (isSystemContextContent(message.content)) return;
 
+      // DEBUG: Log agent messages to understand why comms aren't grouping
+      if (message.isAgentMessage) {
+        console.log('[DEBUG] Agent message received:', {
+          agent,
+          isAgentMessage: message.isAgentMessage,
+          isBot: message.isBot,
+          content: message.content.substring(0, 50) + '...',
+          senderName: message.senderName
+        });
+      }
+
       if (!messageCache.has(agent)) messageCache.set(agent, []);
       const cache = messageCache.get(agent);
 
@@ -2492,24 +2503,38 @@
         const isUser = !m.isBot;
         const isAgent = m.isAgentMessage || false;
 
+        // DEBUG: Log each message's agent status
+        if (isUser) {
+          console.log('[DEBUG] Processing user message:', {
+            isBot: m.isBot,
+            isAgent,
+            isAgentMessage: m.isAgentMessage,
+            content: m.content.substring(0, 40) + '...'
+          });
+        }
+
         if (isUser && isAgent) {
           // Incoming agent message — start or continue a run
           if (!currentRun) currentRun = { messages: [], hasAgent: false, hasBot: false };
           currentRun.messages.push(m);
           currentRun.hasAgent = true;
+          console.log('[DEBUG] Added to agent run (agent msg)');
         } else if (m.isBot && currentRun) {
           // Bot reply while in a candidate run — continue it
           currentRun.messages.push(m);
           currentRun.hasBot = true;
+          console.log('[DEBUG] Added to agent run (bot reply)');
         } else {
           // Jeremy's message or bot message with no active run — flush
           if (currentRun) {
             if (currentRun.hasAgent && currentRun.hasBot) {
               result.push({ type: 'agent-comms', messages: currentRun.messages });
+              console.log('[DEBUG] Flushed agent-comms group with', currentRun.messages.length, 'messages');
             } else {
               for (const cm of currentRun.messages) {
                 result.push({ type: 'single', message: cm });
               }
+              console.log('[DEBUG] Flushed incomplete run as singles');
             }
             currentRun = null;
           }
@@ -2679,30 +2704,43 @@
     }
 
     // Track user scroll position to respect manual scrolling
-    let userScrolledAway = false;  // true if user manually scrolled away from bottom
+    let userIsScrolling = false;
+    let scrollTimeout = null;
     let lastAutoScrollTime = 0;
     
     chatMessages.addEventListener('scroll', (e) => {
+      // User is actively scrolling
+      userIsScrolling = true;
+      
+      // Clear existing timeout
+      if (scrollTimeout) clearTimeout(scrollTimeout);
+      
+      // After scroll stops for 300ms, allow auto-scroll to resume
+      scrollTimeout = setTimeout(() => {
+        userIsScrolling = false;
+      }, 300);
+      
       const distFromBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight;
-      // If user scrolled away from bottom (>100px), mark it
+      // If user scrolled away from bottom (>100px), they're reading history
       if (distFromBottom > 100) {
-        userScrolledAway = true;
-      } else {
-        // User scrolled back to bottom - clear the flag
-        userScrolledAway = false;
+        // Keep userIsScrolling true for longer (2 seconds) if they're clearly reading
+        if (scrollTimeout) clearTimeout(scrollTimeout);
+        scrollTimeout = setTimeout(() => {
+          userIsScrolling = false;
+        }, 2000);
       }
     }, { passive: true });
 
     function autoScroll(force = false) {
-      // If user manually scrolled away from bottom, don't auto-scroll (unless force=true)
-      if (!force && userScrolledAway) return;
+      // CRITICAL: Don't auto-scroll if user is actively scrolling (prevents interruption)
+      if (!force && userIsScrolling) return;
       
       const distFromBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight;
       
       // If user is already at bottom, no need to scroll
       if (distFromBottom <= 5) return;
       
-      // Debounce: don't scroll more than once per 500ms to avoid spamming
+      // Debounce: don't scroll more than once per 500ms
       const now = Date.now();
       if (now - lastAutoScrollTime < 500) return;
       lastAutoScrollTime = now;
