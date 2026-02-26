@@ -822,6 +822,21 @@
         min-width: 300px;
         height: 100vh;
         z-index: 1001;
+        overflow: hidden !important;
+        display: flex !important;
+        flex-direction: column !important;
+      }
+      
+      .side-panel .chat-messages {
+        flex: 1 !important;
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+        min-height: 0 !important;
+      }
+      
+      .side-panel .chat-input-container {
+        flex-shrink: 0 !important;
+        overflow: visible !important;
       }
       
       .side-panel.hidden {
